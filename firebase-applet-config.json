@@ -1,10 +1,9 @@
 {
-  "projectId": "gen-lang-client-0773439289",
-  "appId": "1:1029992571928:web:1f4130a6ddfa9c6fc68f6d",
-  "apiKey": "AIzaSyCRlRMc8IzSI0qTtseq0s-lNs5mvV5JT8c",
-  "authDomain": "gen-lang-client-0773439289.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-5a1481f6-f47b-4fc7-aadd-2c5712d1adee",
-  "storageBucket": "gen-lang-client-0773439289.firebasestorage.app",
-  "messagingSenderId": "1029992571928",
-  "measurementId": ""
+  "projectId": "simplicio-workspace-a9460",
+  "appId": "1:1097816487976:web:5aee82ec222d6dab1d5d1d",
+  "storageBucket": "simplicio-workspace-a9460.firebasestorage.app",
+  "apiKey": "AIzaSyC0ENvzOlQ2qUZ6RcTi8K9HMHQIwT6KNgI",
+  "authDomain": "simplicio-workspace-a9460.firebaseapp.com",
+  "messagingSenderId": "1097816487976",
+  "measurementId": "G-P1B6MG8G6L"
 }

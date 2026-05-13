@@ -1,0 +1,29 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A user in the Simplicio Workspace",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["admin", "member"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["email", "role", "createdAt"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "User profile records"
+    }
+  }
+}

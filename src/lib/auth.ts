@@ -1,4 +1,4 @@
-import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut, type User } from 'firebase/auth';
+import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signInWithRedirect, signOut, type User } from 'firebase/auth';
 import { doc, getDoc, onSnapshot, setDoc, serverTimestamp, deleteDoc, collection, query, orderBy } from 'firebase/firestore';
 import { auth, db } from './firebase';
 
@@ -32,10 +32,18 @@ export function watchAuth(callback: (user: User | null) => void) {
   return onAuthStateChanged(auth, callback);
 }
 
-export async function signInWithGoogle() {
+function googleProvider() {
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: 'select_account' });
-  await signInWithPopup(auth, provider);
+  return provider;
+}
+
+export async function signInWithGoogle() {
+  await signInWithPopup(auth, googleProvider());
+}
+
+export async function signInWithGoogleRedirect() {
+  await signInWithRedirect(auth, googleProvider());
 }
 
 export async function logout() {

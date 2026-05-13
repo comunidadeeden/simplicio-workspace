@@ -1,8 +1,34 @@
+import { useState } from 'react';
 import { LogIn, ShieldCheck } from 'lucide-react';
-import { signInWithGoogle, type AccessStatus } from '../lib/auth';
+import { signInWithGoogle, signInWithGoogleRedirect, type AccessStatus } from '../lib/auth';
 
 export function LoginScreen({ status }: { status: AccessStatus }) {
   const denied = status === 'denied';
+  const [authError, setAuthError] = useState('');
+  const [isSigningIn, setIsSigningIn] = useState(false);
+
+  const loginWithPopup = async () => {
+    setAuthError('');
+    setIsSigningIn(true);
+    try {
+      await signInWithGoogle();
+    } catch (error) {
+      setAuthError(getAuthMessage(error));
+    } finally {
+      setIsSigningIn(false);
+    }
+  };
+
+  const loginWithRedirect = async () => {
+    setAuthError('');
+    setIsSigningIn(true);
+    try {
+      await signInWithGoogleRedirect();
+    } catch (error) {
+      setAuthError(getAuthMessage(error));
+      setIsSigningIn(false);
+    }
+  };
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-950 px-6 text-slate-200">
@@ -23,12 +49,27 @@ export function LoginScreen({ status }: { status: AccessStatus }) {
           </div>
         )}
 
+        {authError && (
+          <div className="mb-4 rounded-lg border border-rose-500/20 bg-rose-500/10 p-3 text-[12px] leading-5 text-rose-200">
+            {authError}
+          </div>
+        )}
+
         <button
-          onClick={signInWithGoogle}
-          className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 text-[12px] font-bold text-white transition-colors hover:bg-blue-500"
+          onClick={loginWithPopup}
+          disabled={isSigningIn}
+          className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 text-[12px] font-bold text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
         >
           <LogIn size={14} />
-          Entrar com Google
+          {isSigningIn ? 'Abrindo Google...' : 'Entrar com Google'}
+        </button>
+
+        <button
+          onClick={loginWithRedirect}
+          disabled={isSigningIn}
+          className="mt-2 inline-flex h-9 w-full items-center justify-center rounded-lg border border-slate-800 px-3 text-[11px] font-semibold text-slate-400 transition-colors hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          Entrar redirecionando
         </button>
 
         <p className="mt-4 text-center text-[11px] leading-5 text-slate-600">
@@ -37,4 +78,21 @@ export function LoginScreen({ status }: { status: AccessStatus }) {
       </div>
     </div>
   );
+}
+
+function getAuthMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.includes('auth/unauthorized-domain')) {
+    return 'Este domínio ainda não está liberado no Firebase Authentication. Adicione simplicio-workspace.vercel.app em Authorized domains.';
+  }
+  if (message.includes('auth/operation-not-allowed')) {
+    return 'O login com Google ainda não está ativado no Firebase Authentication.';
+  }
+  if (message.includes('auth/popup-closed-by-user')) {
+    return 'A janela do Google foi fechada antes de concluir. Tente novamente ou use a opção de redirecionamento.';
+  }
+  if (message.includes('auth/popup-blocked')) {
+    return 'O navegador bloqueou o popup. Use a opção de redirecionamento.';
+  }
+  return `Não foi possível iniciar o login: ${message}`;
 }

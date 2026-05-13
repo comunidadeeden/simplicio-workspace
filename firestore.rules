@@ -43,7 +43,7 @@ service cloud.firestore {
           (isAdminEmail() && request.resource.data.role == 'admin') ||
           (isAllowedCollaborator() && request.resource.data.role == 'collaborator')
         );
-      allow delete: if isAdmin() || isOwnVisibleActivity(resource.data);
+      allow delete: if isAdmin();
     }
 
     match /allowedUsers/{userEmail} {
@@ -55,7 +55,7 @@ service cloud.firestore {
       allow read: if isAdmin() || isOwnVisibleActivity(resource.data);
       allow create: if isAdmin() || isOwnVisibleActivity(request.resource.data);
       allow update: if isAdmin() || (isOwnVisibleActivity(resource.data) && isOwnVisibleActivity(request.resource.data));
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() || isOwnVisibleActivity(resource.data);
     }
 
     match /teamMembers/{memberId} {
@@ -65,6 +65,11 @@ service cloud.firestore {
 
     match /financeExpenses/{expenseId} {
       allow read, write: if isAdmin();
+    }
+
+    match /integrationSettings/{settingId} {
+      allow read: if canAccessApp();
+      allow write: if isAdmin();
     }
   }
 }

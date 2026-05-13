@@ -24,7 +24,6 @@ import {
   createExpense,
   defaultExpenses,
   defaultRevenue,
-  defaultTrafficExpenses,
   emptyExpenseDraft,
   expenseCategories,
   expenseKinds,
@@ -38,6 +37,7 @@ import {
   TRAFFIC_TAX_RATE,
   type FinanceExpense,
 } from '../lib/finance';
+import { defaultIntegrationSettings, loadSheetData, subscribeIntegrationSettings } from '../lib/integrations';
 import { cn } from '../lib/utils';
 
 type SyncStatus = 'connecting' | 'online' | 'local';
@@ -50,6 +50,9 @@ const labelClass = 'text-[10px] font-semibold uppercase tracking-widest text-sla
 
 export function Finance() {
   const [expenses, setExpenses] = useState<FinanceExpense[]>(defaultExpenses);
+  const [revenue, setRevenue] = useState(defaultRevenue);
+  const [trafficExpenses, setTrafficExpenses] = useState<FinanceExpense[]>([]);
+  const [sheetMessage, setSheetMessage] = useState('Planilhas aguardando leitura.');
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('connecting');
   const [syncMessage, setSyncMessage] = useState('Conectando ao Firebase...');
   const [view, setView] = useState<FinanceView>('overview');
@@ -75,11 +78,29 @@ export function Finance() {
     );
   }, []);
 
-  const revenue = defaultRevenue;
-  const allExpenses = useMemo(() => [...defaultTrafficExpenses, ...expenses], [expenses]);
-  const trafficGross = sum(defaultTrafficExpenses.map((expense) => expense.rawAmount ?? 0));
-  const trafficTax = sum(defaultTrafficExpenses.map((expense) => expense.taxAmount ?? 0));
-  const trafficTotal = sum(defaultTrafficExpenses.map((expense) => expense.amount));
+  useEffect(() => {
+    return subscribeIntegrationSettings(
+      (settings) => {
+        loadSheetData(settings).then((result) => {
+          setRevenue(result.sales.length ? result.sales : defaultRevenue);
+          setTrafficExpenses(result.trafficExpenses.length ? result.trafficExpenses : []);
+          setSheetMessage(result.errors.length ? `Planilhas com pendência: ${result.errors.join(' | ')}` : 'Planilhas sincronizadas com dados reais.');
+        });
+      },
+      () => {
+        loadSheetData(defaultIntegrationSettings).then((result) => {
+          setRevenue(result.sales.length ? result.sales : defaultRevenue);
+          setTrafficExpenses(result.trafficExpenses.length ? result.trafficExpenses : []);
+          setSheetMessage(result.errors.length ? `Planilhas com pendência: ${result.errors.join(' | ')}` : 'Planilhas sincronizadas com dados reais.');
+        });
+      },
+    );
+  }, []);
+
+  const allExpenses = useMemo(() => [...trafficExpenses, ...expenses], [expenses, trafficExpenses]);
+  const trafficGross = sum(trafficExpenses.map((expense) => expense.rawAmount ?? 0));
+  const trafficTax = sum(trafficExpenses.map((expense) => expense.taxAmount ?? 0));
+  const trafficTotal = sum(trafficExpenses.map((expense) => expense.amount));
   const totalRevenue = sum(revenue.map((item) => item.revenue));
   const paidExpenses = sum(allExpenses.filter((expense) => expense.status === 'Paga').map((expense) => expense.amount));
   const openExpenses = sum(allExpenses.filter((expense) => expense.status === 'Aberta').map((expense) => expense.amount));
@@ -215,6 +236,7 @@ export function Finance() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <SyncBadge status={syncStatus}>{syncMessage}</SyncBadge>
+          <SyncBadge status={trafficExpenses.length ? 'online' : 'local'}>{sheetMessage}</SyncBadge>
           <button onClick={openNewExpense} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-[11px] font-bold text-white transition-colors hover:bg-blue-500">
             <Plus size={13} />
             Lançar saída

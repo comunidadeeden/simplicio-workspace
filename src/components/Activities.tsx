@@ -36,6 +36,7 @@ import {
   type TeamMember,
   type TeamTask,
 } from '../lib/activities';
+import type { UserProfile } from '../lib/auth';
 import { cn } from '../lib/utils';
 
 type ViewMode = 'board' | 'list' | 'calendar';
@@ -47,6 +48,7 @@ const emptyTaskDraft: TaskDraft = {
   title: '',
   project: '',
   owner: '',
+  ownerEmail: '',
   status: 'Backlog',
   priority: 'Média',
   dueDate: '',
@@ -59,6 +61,7 @@ const emptyMemberDraft: MemberDraft = {
   name: '',
   role: '',
   capacity: 6,
+  email: '',
 };
 
 const priorityStyles: Record<TaskPriority, string> = {
@@ -71,8 +74,9 @@ const inputClass =
   'h-9 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 text-[12px] text-slate-300 placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-600';
 const labelClass = 'text-[10px] font-semibold uppercase tracking-widest text-slate-500';
 
-export function Activities() {
-  const [tasks, setTasks] = useState<TeamTask[]>(defaultTasks);
+export function Activities({ userProfile }: { userProfile: UserProfile }) {
+  const isAdmin = userProfile.role === 'admin';
+  const [tasks, setTasks] = useState<TeamTask[]>(isAdmin ? defaultTasks : []);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>(defaultTeamMembers);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('connecting');
   const [syncMessage, setSyncMessage] = useState('Conectando ao Firebase...');
@@ -93,6 +97,7 @@ export function Activities() {
 
   useEffect(() => {
     const unsubscribeTasks = subscribeTasks(
+      userProfile,
       (remoteTasks) => {
         setTasks(remoteTasks);
         setSyncStatus('online');
@@ -104,18 +109,18 @@ export function Activities() {
       },
     );
 
-    const unsubscribeMembers = subscribeTeamMembers(
+    const unsubscribeMembers = isAdmin ? subscribeTeamMembers(
       (remoteMembers) => {
         if (remoteMembers.length) setTeamMembers(remoteMembers);
       },
       () => undefined,
-    );
+    ) : () => undefined;
 
     return () => {
       unsubscribeTasks();
       unsubscribeMembers();
     };
-  }, []);
+  }, [isAdmin, userProfile]);
 
   const filteredTasks = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -126,7 +131,7 @@ export function Activities() {
         [task.title, task.project, task.owner, task.notes, task.tags.join(' ')].some((value) => value.toLowerCase().includes(term));
       const matchesStatus = statusFilter === 'Todos' || task.status === statusFilter;
       const matchesPriority = priorityFilter === 'Todas' || task.priority === priorityFilter;
-      const matchesOwner = ownerFilter === 'Todos' || task.owner === ownerFilter;
+      const matchesOwner = !isAdmin || ownerFilter === 'Todos' || task.owner === ownerFilter;
       const matchesPeriod = matchesPeriodFilter(task.dueDate, periodFilter);
       const matchesFocus =
         activeFocus === 'all' ||
@@ -137,7 +142,7 @@ export function Activities() {
 
       return matchesSearch && matchesStatus && matchesPriority && matchesOwner && matchesPeriod && matchesFocus;
     });
-  }, [activeFocus, ownerFilter, periodFilter, priorityFilter, search, statusFilter, tasks]);
+  }, [activeFocus, isAdmin, ownerFilter, periodFilter, priorityFilter, search, statusFilter, tasks]);
 
   const todayCount = tasks.filter((task) => task.status !== 'Concluído' && matchesPeriodFilter(task.dueDate, 'today')).length;
   const overdueCount = tasks.filter((task) => task.status !== 'Concluído' && matchesPeriodFilter(task.dueDate, 'overdue')).length;
@@ -151,7 +156,7 @@ export function Activities() {
 
   const openNewTask = () => {
     setEditingTask(null);
-    setTaskDraft({ ...emptyTaskDraft, owner: teamMembers[0]?.name ?? '' });
+    setTaskDraft(isAdmin ? { ...emptyTaskDraft, owner: teamMembers[0]?.name ?? '', ownerEmail: teamMembers[0]?.email ?? '' } : { ...emptyTaskDraft, owner: userProfile.name, ownerEmail: userProfile.email, status: 'Em andamento' });
     setTaskModalOpen(true);
   };
 
@@ -161,6 +166,7 @@ export function Activities() {
       title: task.title,
       project: task.project,
       owner: task.owner,
+      ownerEmail: task.ownerEmail,
       status: task.status,
       priority: task.priority,
       dueDate: task.dueDate,
@@ -174,18 +180,20 @@ export function Activities() {
   const saveTask = async () => {
     if (!taskDraft.title.trim()) return;
 
+    const normalizedTask = normalizeTaskDraft(taskDraft, teamMembers, userProfile);
+
     if (editingTask) {
-      await persistTaskPatch(editingTask.id, taskDraft);
+      await persistTaskPatch(editingTask.id, normalizedTask);
     } else if (syncStatus === 'online') {
       try {
-        await createTask(taskDraft);
+        await createTask(normalizedTask);
       } catch (error) {
-        addLocalTask(taskDraft);
+        addLocalTask(normalizedTask);
         setSyncStatus('local');
         setSyncMessage(`Atividade salva localmente. Firebase recusou a gravação: ${getErrorMessage(error)}.`);
       }
     } else {
-      addLocalTask(taskDraft);
+      addLocalTask(normalizedTask);
     }
 
     setTaskModalOpen(false);
@@ -194,7 +202,7 @@ export function Activities() {
   const saveMember = async () => {
     if (!memberDraft.name.trim()) return;
 
-    const newMember = { ...memberDraft, capacity: Number(memberDraft.capacity) || 1 };
+    const newMember = { ...memberDraft, email: memberDraft.email.trim().toLowerCase(), capacity: Number(memberDraft.capacity) || 1 };
 
     if (syncStatus === 'online') {
       try {
@@ -263,7 +271,9 @@ export function Activities() {
     const quickTask: TaskDraft = {
       ...emptyTaskDraft,
       title,
-      owner: teamMembers[0]?.name ?? '',
+      owner: isAdmin ? teamMembers[0]?.name ?? '' : userProfile.name,
+      ownerEmail: isAdmin ? teamMembers[0]?.email ?? '' : userProfile.email,
+      status: isAdmin ? 'Backlog' : 'Em andamento',
       dueDate: new Date().toISOString().slice(0, 10),
     };
 
@@ -310,6 +320,7 @@ export function Activities() {
             <Filter size={13} />
             Filtros
           </button>
+          {isAdmin && (
           <button
             onClick={() => setMemberModalOpen(true)}
             className="inline-flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-[11px] font-semibold text-slate-400 transition-colors hover:text-slate-100"
@@ -317,6 +328,7 @@ export function Activities() {
             <UserPlus size={13} />
             Equipe
           </button>
+          )}
           <button
             onClick={openNewTask}
             className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-[11px] font-bold text-white transition-colors hover:bg-blue-500"
@@ -331,6 +343,7 @@ export function Activities() {
 
       <FocusRail
         active={activeFocus}
+        isAdmin={isAdmin}
         counts={{ all: tasks.length, today: todayCount, overdue: overdueCount, high: atRisk, unassigned: unassignedCount }}
         onChange={applyFocus}
       />
@@ -392,9 +405,9 @@ export function Activities() {
 
             {showFilters && (
               <div className="grid grid-cols-1 gap-3 rounded-xl border border-slate-900 bg-slate-950/70 p-3 md:grid-cols-2 xl:grid-cols-5">
-                <SelectFilter label="Status" value={statusFilter} onChange={(value) => setStatusFilter(value as TaskStatus | 'Todos')} options={['Todos', ...taskStatuses]} />
+                <SelectFilter label="Status" value={statusFilter} onChange={(value) => setStatusFilter(value as TaskStatus | 'Todos')} options={isAdmin ? ['Todos', ...taskStatuses] : ['Todos', 'Em andamento', 'Revisão', 'Concluído']} />
                 <SelectFilter label="Prioridade" value={priorityFilter} onChange={(value) => setPriorityFilter(value as TaskPriority | 'Todas')} options={['Todas', ...taskPriorities]} />
-                <SelectFilter label="Responsável" value={ownerFilter} onChange={setOwnerFilter} options={['Todos', ...teamMembers.map((member) => member.name)]} />
+                {isAdmin && <SelectFilter label="Responsável" value={ownerFilter} onChange={setOwnerFilter} options={['Todos', ...teamMembers.map((member) => member.name)]} />}
                 <SelectFilter
                   label="Prazo"
                   value={periodFilter}
@@ -419,9 +432,9 @@ export function Activities() {
           {filteredTasks.length === 0 ? (
             <EmptyState onNewTask={openNewTask} />
           ) : viewMode === 'board' ? (
-            <BoardView tasks={filteredTasks} onEdit={openEditTask} onDelete={deleteTask} onStatusChange={persistTaskPatch} />
+            <BoardView columns={isAdmin ? taskStatuses : ['Em andamento', 'Revisão', 'Concluído']} tasks={filteredTasks} onEdit={openEditTask} onDelete={deleteTask} onStatusChange={persistTaskPatch} />
           ) : viewMode === 'list' ? (
-            <ListView tasks={filteredTasks} onEdit={openEditTask} onDelete={deleteTask} onStatusChange={persistTaskPatch} />
+            <ListView statusOptions={isAdmin ? taskStatuses : ['Em andamento', 'Revisão', 'Concluído']} tasks={filteredTasks} onEdit={openEditTask} onDelete={deleteTask} onStatusChange={persistTaskPatch} />
           ) : (
             <CalendarView tasks={filteredTasks} onEdit={openEditTask} onDelete={deleteTask} onStatusChange={persistTaskPatch} />
           )}
@@ -439,13 +452,14 @@ export function Activities() {
           title={editingTask ? 'Editar atividade' : 'Nova atividade'}
           draft={taskDraft}
           members={teamMembers}
+          isAdmin={isAdmin}
           onChange={setTaskDraft}
           onClose={() => setTaskModalOpen(false)}
           onSave={saveTask}
         />
       )}
 
-      {memberModalOpen && (
+      {isAdmin && memberModalOpen && (
         <MemberModal
           draft={memberDraft}
           onChange={setMemberDraft}
@@ -508,10 +522,12 @@ function QuickCapture({
 
 function FocusRail({
   active,
+  isAdmin,
   counts,
   onChange,
 }: {
   active: FocusFilter;
+  isAdmin: boolean;
   counts: Record<FocusFilter, number>;
   onChange: (focus: FocusFilter) => void;
 }) {
@@ -520,7 +536,7 @@ function FocusRail({
     { id: 'today', label: 'Hoje', tone: 'text-blue-300' },
     { id: 'overdue', label: 'Atrasadas', tone: 'text-rose-300' },
     { id: 'high', label: 'Alta prioridade', tone: 'text-amber-300' },
-    { id: 'unassigned', label: 'Sem responsável', tone: 'text-sky-300' },
+    ...(isAdmin ? [{ id: 'unassigned' as FocusFilter, label: 'Sem responsável', tone: 'text-sky-300' }] : []),
   ];
 
   return (
@@ -543,11 +559,13 @@ function FocusRail({
 }
 
 function BoardView({
+  columns,
   tasks,
   onEdit,
   onDelete,
   onStatusChange,
 }: {
+  columns: TaskStatus[];
   tasks: TeamTask[];
   onEdit: (task: TeamTask) => void;
   onDelete: (task: TeamTask) => void;
@@ -555,7 +573,7 @@ function BoardView({
 }) {
   return (
     <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
-      {taskStatuses.map((column) => (
+      {columns.map((column) => (
         <div key={column} className="min-h-[360px] rounded-xl border border-slate-900 bg-slate-950/70 p-3">
           <div className="mb-3 flex items-center justify-between">
             <p className="text-[11px] font-semibold text-slate-400">{column}</p>
@@ -577,11 +595,13 @@ function BoardView({
 }
 
 function ListView({
+  statusOptions,
   tasks,
   onEdit,
   onDelete,
   onStatusChange,
 }: {
+  statusOptions: TaskStatus[];
   tasks: TeamTask[];
   onEdit: (task: TeamTask) => void;
   onDelete: (task: TeamTask) => void;
@@ -600,7 +620,7 @@ function ListView({
             </div>
             <span className="text-[11px] text-slate-400">{task.owner || 'Sem responsável'}</span>
             <select className={inputClass} value={task.status} onChange={(event) => onStatusChange(task.id, { status: event.target.value as TaskStatus })}>
-              {taskStatuses.map((status) => <option key={status}>{status}</option>)}
+              {statusOptions.map((status) => <option key={status}>{status}</option>)}
             </select>
             <span className={cn('w-fit rounded border px-2 py-1 text-[10px] font-bold', priorityStyles[task.priority])}>{task.priority}</span>
             <div className="flex items-center justify-end gap-1">
@@ -806,6 +826,7 @@ function TaskModal({
   title,
   draft,
   members,
+  isAdmin,
   onChange,
   onClose,
   onSave,
@@ -813,6 +834,7 @@ function TaskModal({
   title: string;
   draft: TaskDraft;
   members: TeamMember[];
+  isAdmin: boolean;
   onChange: (draft: TaskDraft) => void;
   onClose: () => void;
   onSave: () => void;
@@ -823,12 +845,20 @@ function TaskModal({
         <Field label="Título" className="md:col-span-2"><input className={inputClass} value={draft.title} onChange={(event) => onChange({ ...draft, title: event.target.value })} autoFocus /></Field>
         <Field label="Projeto"><input className={inputClass} value={draft.project} onChange={(event) => onChange({ ...draft, project: event.target.value })} /></Field>
         <Field label="Responsável">
-          <select className={inputClass} value={draft.owner} onChange={(event) => onChange({ ...draft, owner: event.target.value })}>
+          <select
+            className={inputClass}
+            value={draft.ownerEmail}
+            disabled={!isAdmin}
+            onChange={(event) => {
+              const member = members.find((item) => item.email === event.target.value);
+              onChange({ ...draft, owner: member?.name ?? '', ownerEmail: member?.email ?? '' });
+            }}
+          >
             <option value="">Sem responsável</option>
-            {members.map((member) => <option key={member.id}>{member.name}</option>)}
+            {members.map((member) => <option key={member.id} value={member.email}>{member.name}</option>)}
           </select>
         </Field>
-        <Field label="Status"><select className={inputClass} value={draft.status} onChange={(event) => onChange({ ...draft, status: event.target.value as TaskStatus })}>{taskStatuses.map((status) => <option key={status}>{status}</option>)}</select></Field>
+        <Field label="Status"><select className={inputClass} value={draft.status} onChange={(event) => onChange({ ...draft, status: event.target.value as TaskStatus })}>{(isAdmin ? taskStatuses : ['Em andamento', 'Revisão', 'Concluído']).map((status) => <option key={status}>{status}</option>)}</select></Field>
         <Field label="Prioridade"><select className={inputClass} value={draft.priority} onChange={(event) => onChange({ ...draft, priority: event.target.value as TaskPriority })}>{taskPriorities.map((priority) => <option key={priority}>{priority}</option>)}</select></Field>
         <Field label="Prazo"><input className={inputClass} type="date" value={draft.dueDate} onChange={(event) => onChange({ ...draft, dueDate: event.target.value })} /></Field>
         <Field label="Esforço"><input className={inputClass} placeholder="Ex: 3h" value={draft.effort} onChange={(event) => onChange({ ...draft, effort: event.target.value })} /></Field>
@@ -856,9 +886,10 @@ function MemberModal({
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <Field label="Nome"><input className={inputClass} value={draft.name} onChange={(event) => onChange({ ...draft, name: event.target.value })} autoFocus /></Field>
         <Field label="Função"><input className={inputClass} value={draft.role} onChange={(event) => onChange({ ...draft, role: event.target.value })} /></Field>
-        <Field label="Capacidade" className="md:col-span-2"><input className={inputClass} type="number" min={1} value={draft.capacity} onChange={(event) => onChange({ ...draft, capacity: Number(event.target.value) })} /></Field>
+        <Field label="E-mail"><input className={inputClass} type="email" value={draft.email} onChange={(event) => onChange({ ...draft, email: event.target.value })} /></Field>
+        <Field label="Capacidade"><input className={inputClass} type="number" min={1} value={draft.capacity} onChange={(event) => onChange({ ...draft, capacity: Number(event.target.value) })} /></Field>
       </div>
-      <ModalActions onClose={onClose} onSave={onSave} saveLabel="Salvar membro" disabled={!draft.name.trim()} />
+      <ModalActions onClose={onClose} onSave={onSave} saveLabel="Salvar membro" disabled={!draft.name.trim() || !draft.email.trim()} />
     </Modal>
   );
 }
@@ -951,6 +982,24 @@ function EmptyState({ onNewTask }: { onNewTask: () => void }) {
       </button>
     </div>
   );
+}
+
+function normalizeTaskDraft(draft: TaskDraft, members: TeamMember[], profile: UserProfile): TaskDraft {
+  if (profile.role !== 'admin') {
+    return {
+      ...draft,
+      owner: profile.name,
+      ownerEmail: profile.email,
+      status: draft.status === 'Backlog' ? 'Em andamento' : draft.status,
+    };
+  }
+
+  const member = members.find((item) => item.email === draft.ownerEmail || item.name === draft.owner);
+  return {
+    ...draft,
+    owner: member?.name ?? draft.owner,
+    ownerEmail: member?.email ?? draft.ownerEmail,
+  };
 }
 
 function getActiveTasks(tasks: TeamTask[], owner: string) {

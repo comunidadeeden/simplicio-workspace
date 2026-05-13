@@ -1,6 +1,7 @@
-import { Search, Bell, User } from 'lucide-react';
+import { Search, Bell, User, LogOut } from 'lucide-react';
+import { logout, type UserProfile } from '../lib/auth';
 
-export function TopNav() {
+export function TopNav({ userProfile }: { userProfile: UserProfile }) {
   return (
     <header className="h-16 px-10 flex items-center justify-between border-b border-slate-900/50 bg-slate-950/20 backdrop-blur-sm sticky top-0 z-10 w-full">
       <div className="flex-1 flex max-w-sm">
@@ -16,7 +17,7 @@ export function TopNav() {
         </div>
       </div>
       
-      <div className="flex items-center gap-5 ml-4">
+      <div className="flex items-center gap-4 ml-4">
         <button className="relative p-2 text-slate-500 hover:text-slate-300 transition-colors">
           <Bell className="h-4 w-4" />
           <span className="absolute top-2 right-2 w-1.5 h-1.5 bg-blue-600 rounded-full border border-slate-950"></span>
@@ -24,12 +25,15 @@ export function TopNav() {
         
         <div className="flex items-center gap-3 pl-5 border-l border-slate-900">
           <div className="text-right hidden sm:block">
-            <p className="text-[12px] font-semibold text-slate-200 tracking-tight">Bruno Simplicio</p>
-            <p className="text-[10px] text-slate-600 font-medium">Proprietário</p>
+            <p className="text-[12px] font-semibold text-slate-200 tracking-tight">{userProfile.name}</p>
+            <p className="text-[10px] text-slate-600 font-medium">{userProfile.role === 'admin' ? 'Admin' : 'Colaborador'}</p>
           </div>
-          <div className="h-8 w-8 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center shadow-sm">
-            <User className="h-4 w-4 text-slate-400" />
+          <div className="h-8 w-8 overflow-hidden rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center shadow-sm">
+            {userProfile.photoURL ? <img src={userProfile.photoURL} alt="" className="h-full w-full object-cover" /> : <User className="h-4 w-4 text-slate-400" />}
           </div>
+          <button onClick={logout} className="p-2 text-slate-500 transition-colors hover:text-slate-200" title="Sair" aria-label="Sair">
+            <LogOut size={15} />
+          </button>
         </div>
       </div>
     </header>

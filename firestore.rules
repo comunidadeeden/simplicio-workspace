@@ -1,41 +1,70 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if false; 
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email is string;
     }
-    
-    // Core Helpers
-    function isValidId(id) { 
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_-]+$'); 
+
+    function email() {
+      return request.auth.token.email.lower();
     }
-    function incoming() { return request.resource.data; }
-    function existing() { return resource.data; }
-    function isSignedIn() { return request.auth != null; }
-    
-    // Admin helper
-    function isAdmin() { 
-      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'; 
+
+    function isAdminEmail() {
+      return isSignedIn() && email() == 'gu.correa98@gmail.com';
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return isAdminEmail() || (isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && userDoc().role == 'admin');
+    }
+
+    function isAllowedCollaborator() {
+      return isSignedIn() && exists(/databases/$(database)/documents/allowedUsers/$(email())) && get(/databases/$(database)/documents/allowedUsers/$(email())).data.active == true;
+    }
+
+    function canAccessApp() {
+      return isAdmin() || isAllowedCollaborator();
+    }
+
+    function isOwnVisibleActivity(data) {
+      return canAccessApp() && data.ownerEmail == email() && data.status != 'Backlog';
     }
 
     match /users/{userId} {
-      // Allow read only to owner or admin
-      allow read: if isValidId(userId) && isSignedIn() && (request.auth.uid == userId || isAdmin());
-      
-      // We'll manage user creation via admin SDK or strict rules later. Right now we isolate this to false to ensure safety in MVP.
-      allow write: if false;
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow create, update: if isSignedIn()
+        && request.auth.uid == userId
+        && request.resource.data.email == email()
+        && request.resource.data.active == true
+        && (
+          (isAdminEmail() && request.resource.data.role == 'admin') ||
+          (isAllowedCollaborator() && request.resource.data.role == 'collaborator')
+        );
+      allow delete: if isAdmin() || isOwnVisibleActivity(resource.data);
+    }
+
+    match /allowedUsers/{userEmail} {
+      allow read: if isAdmin() || (isSignedIn() && userEmail == email());
+      allow create, update, delete: if isAdmin();
     }
 
     match /activities/{activityId} {
-      allow read, write: if true;
+      allow read: if isAdmin() || isOwnVisibleActivity(resource.data);
+      allow create: if isAdmin() || isOwnVisibleActivity(request.resource.data);
+      allow update: if isAdmin() || (isOwnVisibleActivity(resource.data) && isOwnVisibleActivity(request.resource.data));
+      allow delete: if isAdmin();
     }
 
     match /teamMembers/{memberId} {
-      allow read, write: if true;
+      allow read: if canAccessApp();
+      allow write: if isAdmin();
     }
 
     match /financeExpenses/{expenseId} {
-      allow read, write: if true;
+      allow read, write: if isAdmin();
     }
   }
 }

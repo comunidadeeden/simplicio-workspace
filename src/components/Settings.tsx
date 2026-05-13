@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { motion } from 'motion/react';
 import {
   BellRing,
@@ -14,6 +14,7 @@ import {
   Webhook,
   type LucideIcon,
 } from 'lucide-react';
+import { addAllowedUser, removeAllowedUser, subscribeAllowedUsers, type AllowedUser, type UserProfile } from '../lib/auth';
 import { cn } from '../lib/utils';
 
 type ConnectionStatus = 'Ativa' | 'Pendente' | 'Erro';
@@ -56,7 +57,7 @@ const inputClass =
 
 const labelClass = 'text-[10px] font-semibold uppercase tracking-widest text-slate-500';
 
-export function Settings() {
+export function Settings({ userProfile }: { userProfile: UserProfile }) {
   const [salesConfig, setSalesConfig] = useState<SalesSheetConfig>({
     platform: 'Hotmart',
     spreadsheetUrl: 'https://docs.google.com/spreadsheets/d/vendas-operacao',
@@ -104,8 +105,21 @@ export function Settings() {
   });
 
   const [saveState, setSaveState] = useState<'idle' | 'saved'>('idle');
+  const [allowedUsers, setAllowedUsers] = useState<AllowedUser[]>([]);
+  const [accessDraft, setAccessDraft] = useState({ name: '', email: '' });
 
   const activeConnections = adAccounts.filter((account) => account.status === 'Ativa').length + (salesConfig.status === 'Ativa' ? 1 : 0);
+
+  useEffect(() => {
+    if (userProfile.role !== 'admin') return;
+    return subscribeAllowedUsers(setAllowedUsers);
+  }, [userProfile.role]);
+
+  const addAccess = async () => {
+    if (!accessDraft.email.trim()) return;
+    await addAllowedUser(accessDraft.email, accessDraft.name);
+    setAccessDraft({ name: '', email: '' });
+  };
 
   const addAdAccount = () => {
     if (!draftAccount.name || !draftAccount.spreadsheetUrl) return;
@@ -318,6 +332,48 @@ export function Settings() {
         </div>
 
         <aside className="space-y-6 xl:col-span-4">
+          {userProfile.role === 'admin' && (
+            <SettingsPanel icon={Settings2} title="Acessos" description="Adicione pessoas que podem entrar com Google.">
+              <div className="grid grid-cols-1 gap-3">
+                <input
+                  className={inputClass}
+                  placeholder="Nome"
+                  value={accessDraft.name}
+                  onChange={(event) => setAccessDraft({ ...accessDraft, name: event.target.value })}
+                />
+                <input
+                  className={inputClass}
+                  type="email"
+                  placeholder="email@empresa.com"
+                  value={accessDraft.email}
+                  onChange={(event) => setAccessDraft({ ...accessDraft, email: event.target.value })}
+                />
+                <button
+                  onClick={addAccess}
+                  className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-slate-800 bg-slate-900/60 px-3 text-[11px] font-bold text-slate-300 transition-colors hover:text-white"
+                >
+                  <Plus size={13} />
+                  Liberar acesso
+                </button>
+              </div>
+              <div className="space-y-2">
+                {allowedUsers.map((user) => (
+                  <div key={user.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-900 bg-slate-950/70 px-3 py-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-[12px] font-semibold text-slate-300">{user.name || user.email}</p>
+                      <p className="truncate text-[10px] text-slate-600">{user.email} · {user.role === 'admin' ? 'Admin' : 'Colaborador'}</p>
+                    </div>
+                    {user.role !== 'admin' && (
+                      <button onClick={() => removeAllowedUser(user.email)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-600 transition-colors hover:bg-slate-900 hover:text-rose-300" aria-label={`Remover ${user.email}`} title="Remover acesso">
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </SettingsPanel>
+          )}
+
           <SettingsPanel icon={Webhook} title="Webhook da equipe" description="Automação para enviar atividades abertas no WhatsApp.">
             <Field label="Nome">
               <input

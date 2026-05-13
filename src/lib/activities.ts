@@ -7,11 +7,13 @@ import {
   orderBy,
   query,
   serverTimestamp,
+  where,
   updateDoc,
   type FirestoreError,
   type Timestamp,
 } from 'firebase/firestore';
 import { db } from './firebase';
+import type { UserProfile } from './auth';
 
 export type TaskStatus = 'Backlog' | 'Em andamento' | 'Revisão' | 'Concluído';
 export type TaskPriority = 'Alta' | 'Média' | 'Baixa';
@@ -21,6 +23,7 @@ export interface TeamMember {
   name: string;
   role: string;
   capacity: number;
+  email: string;
 }
 
 export interface TeamTask {
@@ -28,6 +31,7 @@ export interface TeamTask {
   title: string;
   project: string;
   owner: string;
+  ownerEmail: string;
   status: TaskStatus;
   priority: TaskPriority;
   dueDate: string;
@@ -45,10 +49,10 @@ export const taskStatuses: TaskStatus[] = ['Backlog', 'Em andamento', 'Revisão'
 export const taskPriorities: TaskPriority[] = ['Alta', 'Média', 'Baixa'];
 
 export const defaultTeamMembers: TeamMember[] = [
-  { id: 'local-bruno', name: 'Bruno', role: 'Gestão', capacity: 8 },
-  { id: 'local-laura', name: 'Laura', role: 'Marketing', capacity: 7 },
-  { id: 'local-rafael', name: 'Rafael', role: 'Produto', capacity: 6 },
-  { id: 'local-marina', name: 'Marina', role: 'Conteúdo', capacity: 6 },
+  { id: 'local-bruno', name: 'Bruno', role: 'Gestão', capacity: 8, email: 'bruno@simplicio.local' },
+  { id: 'local-laura', name: 'Laura', role: 'Marketing', capacity: 7, email: 'laura@simplicio.local' },
+  { id: 'local-rafael', name: 'Rafael', role: 'Produto', capacity: 6, email: 'rafael@simplicio.local' },
+  { id: 'local-marina', name: 'Marina', role: 'Conteúdo', capacity: 6, email: 'marina@simplicio.local' },
 ];
 
 export const defaultTasks: TeamTask[] = [
@@ -57,6 +61,7 @@ export const defaultTasks: TeamTask[] = [
     title: 'Revisar calendário da campanha Black Week',
     project: 'Lançamento Alpha',
     owner: 'Bruno',
+    ownerEmail: 'bruno@simplicio.local',
     status: 'Em andamento',
     priority: 'Alta',
     dueDate: new Date().toISOString().slice(0, 10),
@@ -69,6 +74,7 @@ export const defaultTasks: TeamTask[] = [
     title: 'Publicar nova sequência de e-mails',
     project: 'Mentoria VIP',
     owner: 'Laura',
+    ownerEmail: 'laura@simplicio.local',
     status: 'Backlog',
     priority: 'Média',
     dueDate: '',
@@ -81,6 +87,7 @@ export const defaultTasks: TeamTask[] = [
     title: 'Validar página de checkout com financeiro',
     project: 'Curso Cripto',
     owner: 'Rafael',
+    ownerEmail: 'rafael@simplicio.local',
     status: 'Revisão',
     priority: 'Alta',
     dueDate: '',
@@ -90,9 +97,17 @@ export const defaultTasks: TeamTask[] = [
   },
 ];
 
-export function subscribeTasks(onChange: (tasks: TeamTask[]) => void, onError: (error: FirestoreError) => void) {
+export function subscribeTasks(profile: UserProfile, onChange: (tasks: TeamTask[]) => void, onError: (error: FirestoreError) => void) {
+  const tasksQuery = profile.role === 'admin'
+    ? query(collection(db, 'activities'), orderBy('createdAt', 'desc'))
+    : query(
+        collection(db, 'activities'),
+        where('ownerEmail', '==', profile.email),
+        where('status', 'in', ['Em andamento', 'Revisão', 'Concluído']),
+      );
+
   return onSnapshot(
-    query(collection(db, 'activities'), orderBy('createdAt', 'desc')),
+    tasksQuery,
     (snapshot) => onChange(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }) as TeamTask)),
     onError,
   );

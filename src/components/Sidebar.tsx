@@ -17,6 +17,7 @@ interface SidebarProps {
   setIsCollapsed: (value: boolean) => void;
   activePage: string;
   setActivePage: (value: string) => void;
+  userRole: 'admin' | 'collaborator';
 }
 
 const NAV_ITEMS = [
@@ -26,7 +27,8 @@ const NAV_ITEMS = [
   { icon: Rocket, label: 'Lançamentos', id: 'launches' },
 ];
 
-export function Sidebar({ isCollapsed, setIsCollapsed, activePage, setActivePage }: SidebarProps) {
+export function Sidebar({ isCollapsed, setIsCollapsed, activePage, setActivePage, userRole }: SidebarProps) {
+  const visibleItems = userRole === 'admin' ? NAV_ITEMS : NAV_ITEMS.filter((item) => ['dashboard', 'activities'].includes(item.id));
   return (
     <motion.aside
       initial={false}
@@ -56,7 +58,7 @@ export function Sidebar({ isCollapsed, setIsCollapsed, activePage, setActivePage
       </div>
 
       <nav className="flex-1 px-3 py-4 space-y-1">
-        {NAV_ITEMS.map((item) => {
+        {visibleItems.map((item) => {
           const Icon = item.icon;
           const isActive = activePage === item.id;
           return (
@@ -80,6 +82,7 @@ export function Sidebar({ isCollapsed, setIsCollapsed, activePage, setActivePage
         })}
       </nav>
 
+      {userRole === 'admin' && (
       <div className="p-3 border-t border-slate-900/50">
         <button
           onClick={() => setActivePage('settings')}
@@ -93,6 +96,7 @@ export function Sidebar({ isCollapsed, setIsCollapsed, activePage, setActivePage
           {!isCollapsed && <span className="text-[13px] font-medium tracking-tight whitespace-nowrap">Configurações</span>}
         </button>
       </div>
+      )}
     </motion.aside>
   );
 }

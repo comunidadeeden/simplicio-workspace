@@ -285,11 +285,11 @@ function parseCsv(csv: string) {
 
 
 const salesColumnAliases = {
-  date: ['data', 'date', 'created_at', 'data da venda', 'data compra', 'data pedido', 'data de compra'],
-  revenue: ['valor', 'receita', 'faturamento', 'valor líquido', 'valor liquido', 'total', 'amount', 'price', 'preço', 'preco'],
-  order: ['pedidos', 'orders', 'vendas', 'pedido', 'order id', 'id pedido', 'transaction', 'transacao', 'transação'],
+  date: ['data', 'date', 'created_at', 'data venda', 'data da venda', 'data compra', 'data pedido', 'data de compra', 'purchase date', 'sale date'],
+  revenue: ['valor', 'valor venda', 'valor da venda', 'receita', 'faturamento', 'valor líquido', 'valor liquido', 'total', 'amount', 'price', 'preço', 'preco', 'sale amount'],
+  order: ['pedidos', 'orders', 'vendas', 'pedido', 'order id', 'id pedido', 'transaction', 'transacao', 'transação', 'codigo venda', 'código venda'],
   product: ['produto', 'product', 'produto nome', 'nome produto', 'plataforma', 'offer', 'oferta', 'item', 'plano'],
-  status: ['status', 'situação', 'situacao', 'estado', 'pagamento', 'status pagamento', 'payment status'],
+  status: ['status', 'situação', 'situacao', 'estado', 'pagamento', 'status pagamento', 'payment status', 'metodo pagamento', 'método pagamento'],
 };
 
 const adColumnAliases = {

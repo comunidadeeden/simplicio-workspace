@@ -12,6 +12,7 @@ import { TRAFFIC_TAX_RATE, type FinanceExpense, type SalesRevenuePoint, type Tra
 export type ConnectionStatus = 'Ativa' | 'Pendente' | 'Erro';
 
 export interface SalesSheetConfig {
+  id: string;
   platform: string;
   spreadsheetUrl: string;
   sheetName: string;
@@ -47,7 +48,8 @@ export interface WebhookConfig {
 }
 
 export interface IntegrationSettings {
-  sales: SalesSheetConfig;
+  salesSources: SalesSheetConfig[];
+  sales?: SalesSheetConfig;
   adAccounts: AdAccountConfig[];
   webhook: WebhookConfig;
 }
@@ -59,19 +61,22 @@ export interface SheetLoadResult {
   errors: string[];
 }
 
+export const defaultSalesSource: SalesSheetConfig = {
+  id: 'sales-principal',
+  platform: 'Vendas',
+  spreadsheetUrl: 'https://docs.google.com/spreadsheets/d/14cA1MmJXKVHOYILMXYdIguIWMjGknIgBwgC31Z5o5Bw/edit?gid=0#gid=0',
+  sheetName: 'Página 1',
+  gid: '0',
+  dateColumn: 'data',
+  revenueColumn: 'valor',
+  orderColumn: '',
+  productColumn: 'produto',
+  statusColumn: 'status',
+  status: 'Ativa',
+};
+
 export const defaultIntegrationSettings: IntegrationSettings = {
-  sales: {
-    platform: 'Vendas',
-    spreadsheetUrl: 'https://docs.google.com/spreadsheets/d/14cA1MmJXKVHOYILMXYdIguIWMjGknIgBwgC31Z5o5Bw/edit?gid=0#gid=0',
-    sheetName: 'Página 1',
-    gid: '0',
-    dateColumn: 'data',
-    revenueColumn: 'valor',
-    orderColumn: '',
-    productColumn: 'produto',
-    statusColumn: 'status',
-    status: 'Ativa',
-  },
+  salesSources: [{ ...defaultSalesSource }],
   adAccounts: [
     {
       id: 'meta-ads-principal',
@@ -121,10 +126,14 @@ export async function saveIntegrationSettings(settings: IntegrationSettings) {
 
 export async function loadSheetData(settings: IntegrationSettings): Promise<SheetLoadResult> {
   const errors: string[] = [];
-  const sales = await loadSales(settings.sales).catch((error) => {
-    errors.push(getErrorMessage('Vendas', error));
-    return [] as SalesRevenuePoint[];
-  });
+  const salesLists = await Promise.all(
+    settings.salesSources
+      .filter((source) => source.status === 'Ativa' && source.spreadsheetUrl.trim())
+      .map((source) => loadSales(source).catch((error) => {
+        errors.push(getErrorMessage(source.platform || 'Vendas', error));
+        return [] as SalesRevenuePoint[];
+      })),
+  );
 
   const trafficLists = await Promise.all(
     settings.adAccounts
@@ -137,7 +146,7 @@ export async function loadSheetData(settings: IntegrationSettings): Promise<Shee
 
   const traffic = trafficLists.flat();
   return {
-    sales,
+    sales: salesLists.flat(),
     traffic,
     trafficExpenses: traffic.map(toTrafficExpense),
     errors,
@@ -285,10 +294,24 @@ function toTrafficExpense(spend: TrafficSpendPoint): FinanceExpense {
 
 function mergeSettings(settings: Partial<IntegrationSettings>): IntegrationSettings {
   return {
-    sales: { ...defaultIntegrationSettings.sales, ...settings.sales },
+    salesSources: normalizeSalesSources(settings),
     adAccounts: settings.adAccounts?.length ? settings.adAccounts : defaultIntegrationSettings.adAccounts,
     webhook: { ...defaultIntegrationSettings.webhook, ...settings.webhook },
   };
+}
+
+function normalizeSalesSources(settings: Partial<IntegrationSettings>): SalesSheetConfig[] {
+  const sources = settings.salesSources?.length
+    ? settings.salesSources
+    : settings.sales
+      ? [settings.sales]
+      : defaultIntegrationSettings.salesSources;
+
+  return sources.map((source, index) => ({
+    ...defaultSalesSource,
+    ...source,
+    id: source.id || (index === 0 ? 'sales-principal' : `sales-${index + 1}`),
+  }));
 }
 
 function normalizeHeader(value: string) {

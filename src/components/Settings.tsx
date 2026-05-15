@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import {
   defaultIntegrationSettings,
+  defaultSalesSource,
   loadSheetData,
   saveIntegrationSettings,
   subscribeIntegrationSettings,
@@ -53,6 +54,13 @@ const statusStyles: Record<ConnectionStatus, string> = {
 const inputClass = 'h-9 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 text-[12px] text-slate-300 placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-600';
 const labelClass = 'text-[10px] font-semibold uppercase tracking-widest text-slate-500';
 
+const emptySalesSource: SalesSheetConfig = {
+  ...defaultSalesSource,
+  id: '',
+  platform: '',
+  spreadsheetUrl: '',
+};
+
 const emptyAdAccount: AdAccountConfig = {
   id: '',
   name: '',
@@ -71,7 +79,7 @@ export function Settings() {
   const [settings, setSettings] = useState<IntegrationSettings>(defaultIntegrationSettings);
   const [modalMode, setModalMode] = useState<ModalMode | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [salesDraft, setSalesDraft] = useState<SalesSheetConfig>(defaultIntegrationSettings.sales);
+  const [salesDraft, setSalesDraft] = useState<SalesSheetConfig>(emptySalesSource);
   const [adDraft, setAdDraft] = useState<AdAccountConfig>(emptyAdAccount);
   const [webhookDraft, setWebhookDraft] = useState<WebhookConfig>(defaultIntegrationSettings.webhook);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -83,15 +91,15 @@ export function Settings() {
   }, []);
 
   const connections = useMemo<ConnectionItem[]>(() => {
-    const sales: ConnectionItem = {
-      id: 'sales',
+    const sales = settings.salesSources.map((source): ConnectionItem => ({
+      id: source.id,
       type: 'sales',
-      title: 'Vendas',
-      subtitle: settings.sales.platform || 'Planilha de vendas',
-      status: settings.sales.status,
-      detail: settings.sales.spreadsheetUrl ? settings.sales.sheetName : 'Nenhuma URL configurada',
+      title: source.platform || 'Fonte de vendas',
+      subtitle: 'Planilha de vendas',
+      status: source.status,
+      detail: source.spreadsheetUrl ? source.sheetName : 'Nenhuma URL configurada',
       icon: Sheet,
-    };
+    }));
 
     const ads = settings.adAccounts.map((account): ConnectionItem => ({
       id: account.id,
@@ -113,7 +121,7 @@ export function Settings() {
       icon: Webhook,
     };
 
-    return [sales, ...ads, webhook];
+    return [...sales, ...ads, webhook];
   }, [settings]);
 
   const activeConnections = connections.filter((item) => item.status === 'Ativa').length;
@@ -126,7 +134,7 @@ export function Settings() {
 
   const openType = (type: ConnectionType) => {
     setEditingId(null);
-    if (type === 'sales') setSalesDraft(settings.sales);
+    if (type === 'sales') setSalesDraft({ ...emptySalesSource, id: `sales-${Date.now()}`, platform: 'Vendas' });
     if (type === 'ads') setAdDraft({ ...emptyAdAccount, id: `ads-${Date.now()}` });
     if (type === 'webhook') setWebhookDraft(settings.webhook);
     setModalMode(type);
@@ -135,7 +143,8 @@ export function Settings() {
   const openEdit = (item: ConnectionItem) => {
     setEditingId(item.id);
     if (item.type === 'sales') {
-      setSalesDraft(settings.sales);
+      const source = settings.salesSources.find((entry) => entry.id === item.id);
+      if (source) setSalesDraft(source);
       setModalMode('sales');
     }
     if (item.type === 'ads') {
@@ -156,7 +165,12 @@ export function Settings() {
 
   const saveDraft = () => {
     if (modalMode === 'sales') {
-      setSettings((current) => ({ ...current, sales: salesDraft }));
+      setSettings((current) => ({
+        ...current,
+        salesSources: editingId
+          ? current.salesSources.map((source) => (source.id === editingId ? salesDraft : source))
+          : [...current.salesSources, { ...salesDraft, id: salesDraft.id || `sales-${Date.now()}` }],
+      }));
       closeModal();
     }
     if (modalMode === 'ads') {
@@ -175,6 +189,11 @@ export function Settings() {
   };
 
   const removeConnection = (item: ConnectionItem) => {
+    if (item.type === 'sales') {
+      setSettings((current) => (current.salesSources.length > 1
+        ? { ...current, salesSources: current.salesSources.filter((source) => source.id !== item.id) }
+        : current));
+    }
     if (item.type === 'ads') {
       setSettings((current) => ({ ...current, adAccounts: current.adAccounts.filter((account) => account.id !== item.id) }));
     }
@@ -256,7 +275,7 @@ export function Settings() {
             <div className="grid grid-cols-[1.4fr_0.8fr_1fr_0.8fr_120px] gap-4 bg-slate-900/30 px-4 py-3 text-[10px] font-semibold uppercase tracking-widest text-slate-600">
               <span>Conexão</span><span>Tipo</span><span>Detalhe</span><span>Status</span><span />
             </div>
-            {connections.map((item, index) => <div key={item.id}><ConnectionRow item={item} index={index} onEdit={() => openEdit(item)} onRemove={() => removeConnection(item)} /></div>)}
+            {connections.map((item, index) => <div key={item.id}><ConnectionRow item={item} index={index} canRemove={item.type !== 'sales' || settings.salesSources.length > 1} onEdit={() => openEdit(item)} onRemove={() => removeConnection(item)} /></div>)}
           </div>
         </div>
       </section>
@@ -295,9 +314,9 @@ function WebhookForm({ draft, onChange }: { draft: WebhookConfig; onChange: (dra
   return <div className="space-y-4"><Field label="Nome"><input className={inputClass} value={draft.name} onChange={(event) => onChange({ ...draft, name: event.target.value })} /></Field><Field label="URL"><input className={inputClass} value={draft.url} onChange={(event) => onChange({ ...draft, url: event.target.value })} /></Field><Field label="Envio"><select className={inputClass} value={draft.cadence} onChange={(event) => onChange({ ...draft, cadence: event.target.value })}><option>Diário às 08:30</option><option>Diário às 18:00</option><option>Segunda, quarta e sexta</option><option>Manual</option></select></Field><div className="grid grid-cols-1 gap-3 md:grid-cols-2"><Toggle label="Incluir responsáveis" checked={draft.includeOwners} onChange={() => onChange({ ...draft, includeOwners: !draft.includeOwners })} /><Toggle label="Incluir prazos" checked={draft.includeDueDates} onChange={() => onChange({ ...draft, includeDueDates: !draft.includeDueDates })} /></div><button className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-blue-500/20 bg-blue-500/10 px-3 py-2 text-[11px] font-bold text-blue-300 transition-colors hover:text-blue-100"><BellRing size={13} />Testar webhook</button></div>;
 }
 
-function ConnectionRow({ item, index, onEdit, onRemove }: { item: ConnectionItem; index: number; onEdit: () => void; onRemove: () => void }) {
+function ConnectionRow({ item, index, canRemove, onEdit, onRemove }: { item: ConnectionItem; index: number; canRemove: boolean; onEdit: () => void; onRemove: () => void }) {
   const Icon = item.icon;
-  return <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.025 }} className="grid grid-cols-[1.4fr_0.8fr_1fr_0.8fr_120px] items-center gap-4 px-4 py-3"><div className="flex min-w-0 items-center gap-3"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-800 bg-slate-900/50 text-blue-400"><Icon size={15} /></div><div className="min-w-0"><p className="truncate text-[12px] font-semibold text-slate-300">{item.title}</p><p className="truncate text-[10px] text-slate-600">{item.subtitle}</p></div></div><span className="text-[11px] text-slate-500">{getTypeLabel(item.type)}</span><span className="truncate text-[11px] text-slate-500">{item.detail}</span><StatusPill status={item.status} label={item.status} /><div className="flex justify-end gap-1"><IconButton label="Editar" onClick={onEdit}><Edit3 size={13} /></IconButton>{item.type !== 'sales' && <IconButton label="Remover" onClick={onRemove}><Trash2 size={13} /></IconButton>}</div></motion.div>;
+  return <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.025 }} className="grid grid-cols-[1.4fr_0.8fr_1fr_0.8fr_120px] items-center gap-4 px-4 py-3"><div className="flex min-w-0 items-center gap-3"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-800 bg-slate-900/50 text-blue-400"><Icon size={15} /></div><div className="min-w-0"><p className="truncate text-[12px] font-semibold text-slate-300">{item.title}</p><p className="truncate text-[10px] text-slate-600">{item.subtitle}</p></div></div><span className="text-[11px] text-slate-500">{getTypeLabel(item.type)}</span><span className="truncate text-[11px] text-slate-500">{item.detail}</span><StatusPill status={item.status} label={item.status} /><div className="flex justify-end gap-1"><IconButton label="Editar" onClick={onEdit}><Edit3 size={13} /></IconButton>{canRemove && <IconButton label="Remover" onClick={onRemove}><Trash2 size={13} /></IconButton>}</div></motion.div>;
 }
 
 function SummaryCard({ label, value, detail, icon: Icon }: { label: string; value: number; detail: string; icon: LucideIcon }) {

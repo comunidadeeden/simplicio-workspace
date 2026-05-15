@@ -33,16 +33,22 @@ export interface LeadLoadResult {
 
 export async function loadLeadScoreData(settings: IntegrationSettings): Promise<LeadLoadResult> {
   const errors: string[] = [];
-  if (settings.sales.status !== 'Ativa' || !settings.sales.spreadsheetUrl.trim()) {
-    return { leads: [], errors: ['Conexão de vendas inativa.'], columns: [] };
+  const salesSources = settings.salesSources.filter((source) => source.status === 'Ativa' && source.spreadsheetUrl.trim());
+
+  if (!salesSources.length) {
+    return { leads: [], errors: ['Nenhuma conexão de vendas ativa.'], columns: [] };
   }
 
-  const rows = await fetchRows(settings.sales.spreadsheetUrl, settings.sales.gid).catch((error) => {
-    errors.push(error instanceof Error ? error.message : 'erro desconhecido ao carregar leads');
-    return [] as Record<string, string>[];
-  });
+  const rowLists = await Promise.all(
+    salesSources.map((source) => fetchRows(source.spreadsheetUrl, source.gid).catch((error) => {
+      const message = error instanceof Error ? error.message : 'erro desconhecido ao carregar leads';
+      errors.push(`${source.platform || 'Vendas'}: ${message}`);
+      return [] as Record<string, string>[];
+    })),
+  );
 
-  const columns = rows[0] ? Object.keys(rows[0]) : [];
+  const rows = rowLists.flat();
+  const columns = Array.from(new Set(rowLists.flatMap((list) => (list[0] ? Object.keys(list[0]) : []))));
   const grouped = new Map<string, Record<string, string>[]>();
   rows.forEach((row, index) => {
     const email = readEmail(row);

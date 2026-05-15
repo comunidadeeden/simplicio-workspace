@@ -64,6 +64,7 @@ function scoreLead(id: string, purchases: Record<string, string>[]): ScoredLead 
   const products = purchases.map(readProduct).filter(Boolean);
   const hasWorkshop = products.some(isWorkshopProduct);
   const hasEden = products.some(isEdenProduct);
+  const hasEdenOrderBump = products.some(isEdenOrderBump);
   const amount = sum(purchases.map(readAmount));
   const name = readName(latest) || 'Lead sem nome';
   const email = readEmail(latest);
@@ -81,6 +82,7 @@ function scoreLead(id: string, purchases: Record<string, string>[]): ScoredLead 
 
   if (hasWorkshop) add(28, 'Comprou ingresso do workshop');
   if (hasEden) add(45, 'Já comprou a comunidade Éden');
+  if (!hasEden && hasEdenOrderBump) add(45, 'Comprou order bump vinculado à comunidade Éden');
   if (isPaidStatus(status)) add(10, 'Pagamento aprovado/confirmado');
   if (email) add(5, 'E-mail disponível');
   if (phone) add(8, 'WhatsApp/telefone disponível');
@@ -93,14 +95,14 @@ function scoreLead(id: string, purchases: Record<string, string>[]): ScoredLead 
     add(8, `Sinais de intenção: ${intent.join(', ')}`);
   }
 
-  if (!hasWorkshop && !hasEden) {
+  if (!hasWorkshop && !hasEden && !hasEdenOrderBump) {
     score = Math.min(score, 55);
     signals.push('Ainda não está no funil workshop > live > Éden');
   }
 
   score = clamp(Math.round(score), 0, 100);
   const temperature: LeadTemperature = score >= 75 ? 'Quente' : score >= 45 ? 'Morno' : 'Frio';
-  const stage: LeadStage = hasEden ? 'Comprou Éden' : hasWorkshop ? 'Comprou ingresso' : 'Outro produto';
+  const stage: LeadStage = hasEden || hasEdenOrderBump ? 'Comprou Éden' : hasWorkshop ? 'Comprou ingresso' : 'Outro produto';
 
   return {
     id,
@@ -331,6 +333,11 @@ function isWorkshopProduct(product: string) {
 function isEdenProduct(product: string) {
   const value = product.toLowerCase();
   return /eden|éden|comunidade/.test(value);
+}
+
+function isEdenOrderBump(product: string) {
+  const value = product.toLowerCase();
+  return /atendimento individual|order bump|bump|consulta individual|sessao individual|sessão individual/.test(value);
 }
 
 function isPaidStatus(status: string) {

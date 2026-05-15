@@ -173,14 +173,22 @@ async function loadSales(config: SalesSheetConfig): Promise<SalesRevenuePoint[]>
 async function loadTraffic(config: AdAccountConfig): Promise<TrafficSpendPoint[]> {
   const rows = await fetchRows(config.spreadsheetUrl, config.gid);
   return rows.map((row) => {
-    const date = parseDate(readColumn(row, config.dateColumn, ['data', 'date', 'dia'])) || new Date().toISOString().slice(0, 10);
-    const spend = parseMoney(readColumn(row, config.spendColumn, ['valor gasto', 'gasto', 'investimento', 'spend', 'amount spent']));
+    const date = parseDate(readColumn(row, config.dateColumn, ['data', 'date', 'dia', 'day'])) || new Date().toISOString().slice(0, 10);
+    const spend = parseMoney(readColumn(row, config.spendColumn, ['valor gasto', 'gasto', 'investimento', 'spend', 'amount spent', 'valor usado']));
+    const campaign = readColumn(row, config.campaignColumn, ['campanha', 'campaign', 'campaign name', 'nome da campanha']);
     return {
       date,
       label: formatShortDate(date),
       account: config.name,
       platform: config.platform,
       spend,
+      campaign,
+      adSet: readColumn(row, '', ['conjunto de anuncios', 'conjunto de anúncios', 'ad set', 'adset', 'ad set name', 'nome do conjunto']),
+      ad: readColumn(row, '', ['anuncio', 'anúncio', 'ad', 'ad name', 'nome do anuncio', 'nome do anúncio']),
+      impressions: parseNumber(readColumn(row, '', ['impressoes', 'impressões', 'impressions'])),
+      clicks: parseNumber(readColumn(row, '', ['cliques', 'clicks', 'link clicks', 'cliques no link'])),
+      leads: parseNumber(readColumn(row, '', ['leads', 'cadastros', 'inscricoes', 'inscrições', 'conversoes', 'conversões'])),
+      raw: row,
     };
   }).filter((point) => point.spend > 0);
 }
@@ -251,6 +259,14 @@ function readColumn(row: Record<string, string>, preferred: string, alternatives
 }
 
 function parseMoney(value: string) {
+  const cleaned = value.replace(/[^\d,.-]/g, '').trim();
+  if (!cleaned) return 0;
+  const hasComma = cleaned.includes(',');
+  const normalized = hasComma ? cleaned.replace(/\./g, '').replace(',', '.') : cleaned;
+  return Number(normalized) || 0;
+}
+
+function parseNumber(value: string) {
   const cleaned = value.replace(/[^\d,.-]/g, '').trim();
   if (!cleaned) return 0;
   const hasComma = cleaned.includes(',');

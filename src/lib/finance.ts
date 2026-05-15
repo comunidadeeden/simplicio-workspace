@@ -52,6 +52,27 @@ export interface TrafficSpendPoint {
   account: string;
   platform: string;
   spend: number;
+  campaign: string;
+  adSet: string;
+  ad: string;
+  impressions: number;
+  clicks: number;
+  leads: number;
+  raw: Record<string, string>;
+}
+
+
+function makeTrafficPoint(point: Pick<TrafficSpendPoint, 'date' | 'label' | 'account' | 'platform' | 'spend'>): TrafficSpendPoint {
+  return {
+    ...point,
+    campaign: '',
+    adSet: '',
+    ad: '',
+    impressions: 0,
+    clicks: 0,
+    leads: 0,
+    raw: {},
+  };
 }
 
 export const TRAFFIC_TAX_RATE = 0.1215;
@@ -70,11 +91,11 @@ export const defaultRevenue: SalesRevenuePoint[] = [
 ];
 
 export const defaultTrafficSpend: TrafficSpendPoint[] = [
-  { date: '2026-05-03', label: '03 mai', account: 'Meta Ads Principal', platform: 'Meta Ads', spend: 4200 },
-  { date: '2026-05-08', label: '08 mai', account: 'Google Search', platform: 'Google Ads', spend: 3150 },
-  { date: '2026-05-13', label: '13 mai', account: 'Meta Ads Principal', platform: 'Meta Ads', spend: 5100 },
-  { date: '2026-05-18', label: '18 mai', account: 'TikTok Remarketing', platform: 'TikTok Ads', spend: 2800 },
-  { date: '2026-05-23', label: '23 mai', account: 'Google Search', platform: 'Google Ads', spend: 3650 },
+  makeTrafficPoint({ date: '2026-05-03', label: '03 mai', account: 'Meta Ads Principal', platform: 'Meta Ads', spend: 4200 }),
+  makeTrafficPoint({ date: '2026-05-08', label: '08 mai', account: 'Google Search', platform: 'Google Ads', spend: 3150 }),
+  makeTrafficPoint({ date: '2026-05-13', label: '13 mai', account: 'Meta Ads Principal', platform: 'Meta Ads', spend: 5100 }),
+  makeTrafficPoint({ date: '2026-05-18', label: '18 mai', account: 'TikTok Remarketing', platform: 'TikTok Ads', spend: 2800 }),
+  makeTrafficPoint({ date: '2026-05-23', label: '23 mai', account: 'Google Search', platform: 'Google Ads', spend: 3650 }),
 ];
 
 export const defaultTrafficExpenses = defaultTrafficSpend.map((spend): FinanceExpense => {

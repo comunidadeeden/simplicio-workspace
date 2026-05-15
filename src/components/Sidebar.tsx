@@ -25,6 +25,7 @@ const NAV_ITEMS = [
   { icon: CheckSquare, label: 'Atividades', id: 'activities' },
   { icon: PieChart, label: 'Financeiro', id: 'finance' },
   { icon: Rocket, label: 'Lançamentos', id: 'launches' },
+  { icon: Users, label: 'Leads', id: 'leads' },
 ];
 
 export function Sidebar({ isCollapsed, setIsCollapsed, activePage, setActivePage, userRole }: SidebarProps) {

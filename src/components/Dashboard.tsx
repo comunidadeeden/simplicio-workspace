@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { motion } from 'motion/react';
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, CartesianGrid } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, CartesianGrid } from 'recharts';
 import { AlertTriangle, ArrowDownRight, ArrowUpRight, CalendarDays, Filter, PieChart as PieChartIcon, RefreshCw, Target, TrendingUp, Wallet } from 'lucide-react';
 import { type SalesRevenuePoint, type TrafficSpendPoint } from '../lib/finance';
 import { defaultIntegrationSettings, loadSheetData, subscribeIntegrationSettings } from '../lib/integrations';
@@ -9,7 +9,7 @@ import { cn } from '../lib/utils';
 const money = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const number = new Intl.NumberFormat('pt-BR');
 const COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#38bdf8', '#a78bfa', '#64748b'];
-const inputClass = 'h-9 rounded-lg border border-slate-800 bg-slate-950 px-3 text-[12px] text-slate-300 outline-none focus:ring-1 focus:ring-blue-600';
+const inputClass = 'h-9 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 text-[12px] text-slate-300 outline-none focus:ring-1 focus:ring-blue-600 disabled:cursor-not-allowed disabled:opacity-40';
 
 type LoadStatus = 'loading' | 'ready' | 'error';
 type PeriodPreset = 'all' | '7d' | '30d' | 'month' | 'custom';
@@ -24,6 +24,7 @@ export function Dashboard() {
   const [periodPreset, setPeriodPreset] = useState<PeriodPreset>('all');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
     return subscribeIntegrationSettings(
@@ -69,45 +70,73 @@ export function Dashboard() {
   const mediaShare = totalRevenue ? Math.round((totalTraffic / totalRevenue) * 100) : 0;
   const contribution = totalRevenue - totalTraffic;
 
-  const revenueByDate = useMemo(() => groupRevenueByDate(filteredRevenue), [filteredRevenue]);
   const trafficByAccount = useMemo(() => groupTrafficByAccount(filteredTraffic), [filteredTraffic]);
   const productData = useMemo(() => groupRevenueByProduct(filteredRevenue), [filteredRevenue]);
   const dailyFlow = useMemo(() => mergeDailyFlow(filteredRevenue, filteredTraffic), [filteredRevenue, filteredTraffic]);
   const topProducts = productData.slice().sort((a, b) => b.value - a.value).slice(0, 5);
 
-  const resetFilters = () => {
+  const resetSegmentFilters = () => {
     setProductFilter('Todos');
     setAccountFilter('Todas');
-    setPeriodPreset('all');
-    setCustomStart('');
-    setCustomEnd('');
   };
 
   return (
     <div className="mx-auto max-w-[1500px] space-y-6 p-10 text-slate-300">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-widest text-blue-400">Comando da operação</p>
           <h1 className="mt-2 text-xl font-display font-bold tracking-tight text-slate-100">Dashboard</h1>
           <p className="mt-1 max-w-2xl text-[12px] leading-5 text-slate-500">Analise faturamento, mídia, ROAS e mix de produtos com filtros de gestão.</p>
         </div>
-        <StatusBanner status={status} message={sheetMessage} />
+        <div className="flex w-full flex-col gap-3 xl:w-auto xl:items-end">
+          <StatusBanner status={status} message={sheetMessage} />
+          <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+            <div className="min-w-[170px]">
+              <select className={inputClass} value={periodPreset} onChange={(event) => setPeriodPreset(event.target.value as PeriodPreset)} aria-label="Selecionar período">
+                <option value="all">Todo período</option>
+                <option value="7d">Últimos 7 dias</option>
+                <option value="30d">Últimos 30 dias</option>
+                <option value="month">Mês atual</option>
+                <option value="custom">Personalizado</option>
+              </select>
+            </div>
+            {periodPreset === 'custom' && (
+              <>
+                <input className="h-9 rounded-lg border border-slate-800 bg-slate-950 px-3 text-[12px] text-slate-300 outline-none focus:ring-1 focus:ring-blue-600" type="date" value={customStart} onChange={(event) => setCustomStart(event.target.value)} aria-label="Data inicial" />
+                <input className="h-9 rounded-lg border border-slate-800 bg-slate-950 px-3 text-[12px] text-slate-300 outline-none focus:ring-1 focus:ring-blue-600" type="date" value={customEnd} onChange={(event) => setCustomEnd(event.target.value)} aria-label="Data final" />
+              </>
+            )}
+            <button
+              type="button"
+              onClick={() => setShowFilters((value) => !value)}
+              aria-pressed={showFilters}
+              className={cn(
+                'flex h-9 w-9 items-center justify-center rounded-lg border transition-colors',
+                showFilters ? 'border-blue-500/40 bg-blue-500/10 text-blue-300' : 'border-slate-800 bg-slate-950 text-slate-500 hover:text-slate-200',
+              )}
+            >
+              <Filter size={15} />
+            </button>
+          </div>
+          <div className="flex items-center gap-2 text-[11px] text-slate-600">
+            <CalendarDays size={12} />
+            <span>{describeRange(dateRange.start, dateRange.end)}</span>
+          </div>
+        </div>
       </div>
 
-      <section className="rounded-2xl border border-slate-900/60 bg-slate-950 p-4">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-[12px] font-semibold text-slate-300"><Filter size={14} className="text-blue-400" />Filtros de análise</div>
-          <button onClick={resetFilters} className="rounded-lg border border-slate-800 px-3 py-1.5 text-[11px] font-semibold text-slate-500 transition-colors hover:text-slate-100">Limpar</button>
-        </div>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
-          <Field label="Produto"><select className={inputClass} value={productFilter} onChange={(event) => setProductFilter(event.target.value)}>{productOptions.map((item) => <option key={item}>{item}</option>)}</select></Field>
-          <Field label="Conta de anúncio"><select className={inputClass} value={accountFilter} onChange={(event) => setAccountFilter(event.target.value)}>{accountOptions.map((item) => <option key={item}>{item}</option>)}</select></Field>
-          <Field label="Período"><select className={inputClass} value={periodPreset} onChange={(event) => setPeriodPreset(event.target.value as PeriodPreset)}><option value="all">Todo período</option><option value="7d">Últimos 7 dias</option><option value="30d">Últimos 30 dias</option><option value="month">Mês atual</option><option value="custom">Personalizado</option></select></Field>
-          <Field label="Início"><input className={inputClass} type="date" value={customStart} disabled={periodPreset !== 'custom'} onChange={(event) => setCustomStart(event.target.value)} /></Field>
-          <Field label="Fim"><input className={inputClass} type="date" value={customEnd} disabled={periodPreset !== 'custom'} onChange={(event) => setCustomEnd(event.target.value)} /></Field>
-          <div className="flex items-end"><div className="w-full rounded-lg border border-slate-900 bg-slate-950/70 px-3 py-2 text-[11px] text-slate-500"><CalendarDays size={12} className="mr-1 inline text-slate-600" />{describeRange(dateRange.start, dateRange.end)}</div></div>
-        </div>
-      </section>
+      {showFilters && (
+        <section className="rounded-2xl border border-slate-900/60 bg-slate-950 p-4">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-[12px] font-semibold text-slate-300"><Filter size={14} className="text-blue-400" />Filtros</div>
+            <button onClick={resetSegmentFilters} className="rounded-lg border border-slate-800 px-3 py-1.5 text-[11px] font-semibold text-slate-500 transition-colors hover:text-slate-100">Limpar</button>
+          </div>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <Field label="Produto"><select className={inputClass} value={productFilter} onChange={(event) => setProductFilter(event.target.value)}>{productOptions.map((item) => <option key={item}>{item}</option>)}</select></Field>
+            <Field label="Conta de anúncio"><select className={inputClass} value={accountFilter} onChange={(event) => setAccountFilter(event.target.value)}>{accountOptions.map((item) => <option key={item}>{item}</option>)}</select></Field>
+          </div>
+        </section>
+      )}
 
       <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
         <MetricCard label="Faturamento" value={money.format(totalRevenue)} detail={`${number.format(totalOrders)} pedido(s)`} icon={TrendingUp} tone="blue" positive />
@@ -143,10 +172,15 @@ export function Dashboard() {
         <Panel className="xl:col-span-4" title="Contas de anúncio" description="Distribuição do gasto por conta.">
           <div className="h-[240px]">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={trafficByAccount}><XAxis dataKey="name" stroke="#334155" fontSize={10} tickLine={false} axisLine={false} /><YAxis hide /><Tooltip contentStyle={{ backgroundColor: '#020617', border: '1px solid #1e293b', borderRadius: '8px', fontSize: '11px' }} formatter={(value) => money.format(Number(value))} /><Bar dataKey="value" fill="#f59e0b" radius={[4, 4, 0, 0]} /></BarChart>
+              <PieChart>
+                <Pie data={trafficByAccount} innerRadius={56} outerRadius={88} dataKey="value" paddingAngle={3}>
+                  {trafficByAccount.map((_, index) => <Cell key={index} fill={COLORS[index % COLORS.length]} />)}
+                </Pie>
+                <Tooltip contentStyle={{ backgroundColor: '#020617', border: '1px solid #1e293b', borderRadius: '8px', fontSize: '11px' }} formatter={(value) => money.format(Number(value))} />
+              </PieChart>
             </ResponsiveContainer>
           </div>
-          <div className="mt-4 space-y-2">{trafficByAccount.slice(0, 4).map((item) => <div key={item.name}><SummaryLine label={item.name} value={money.format(item.value)} /></div>)}</div>
+          <div className="mt-4 space-y-2">{trafficByAccount.slice(0, 5).map((item, index) => <div key={item.name}><SummaryLine label={item.name} value={money.format(item.value)} color={COLORS[index % COLORS.length]} /></div>)}</div>
         </Panel>
       </section>
 
@@ -183,8 +217,8 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   return <label className="space-y-2"><span className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">{label}</span>{children}</label>;
 }
 
-function SummaryLine({ label, value }: { label: string; value: string }) {
-  return <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-900 bg-slate-950/70 px-3 py-2"><span className="truncate text-[11px] text-slate-500">{label}</span><span className="font-mono text-[12px] font-bold text-slate-200">{value}</span></div>;
+function SummaryLine({ label, value, color }: { label: string; value: string; color?: string }) {
+  return <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-900 bg-slate-950/70 px-3 py-2"><span className="flex min-w-0 items-center gap-2 text-[11px] text-slate-500">{color && <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />}<span className="truncate">{label}</span></span><span className="font-mono text-[12px] font-bold text-slate-200">{value}</span></div>;
 }
 
 function RankLine({ index, label, value, percent }: { index: number; label: string; value: string; percent: number }) {
@@ -193,15 +227,6 @@ function RankLine({ index, label, value, percent }: { index: number; label: stri
 
 function EmptyText({ text }: { text: string }) {
   return <p className="rounded-lg border border-slate-900 bg-slate-950/70 p-3 text-[11px] text-slate-500">{text}</p>;
-}
-
-function groupRevenueByDate(revenue: SalesRevenuePoint[]) {
-  const groups = revenue.reduce<Record<string, { name: string; value: number }>>((acc, item) => {
-    acc[item.date] = acc[item.date] ?? { name: item.label, value: 0 };
-    acc[item.date].value += item.revenue;
-    return acc;
-  }, {});
-  return Object.entries(groups).sort(([first], [second]) => first.localeCompare(second)).map(([, value]) => value);
 }
 
 function groupTrafficByAccount(traffic: TrafficSpendPoint[]) {

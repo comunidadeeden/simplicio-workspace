@@ -145,25 +145,6 @@ export function Launches() {
         </section>
       )}
 
-      <Panel title="Configuração do lançamento" description="Base financeira e datas principais da campanha." icon={<Rocket size={15} />} action="Referência">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <NumberField label="Faturamento alvo" value={targetRevenue} onChange={setTargetRevenue} prefix="R$" />
-          <NumberField label="Investimento total" value={totalInvestment} onChange={setTotalInvestment} prefix="R$" />
-          <NumberField label="Ticket produto principal" value={mainTicket} onChange={setMainTicket} prefix="R$" />
-          <NumberField label="Conversão produto" value={mainConversion} onChange={setMainConversion} suffix="%" />
-          <DateField label="Início preparação" value={prepStart} onChange={setPrepStart} />
-          <DateField label="Início vendas" value={salesStart} onChange={setSalesStart} />
-          <DateField label="Data do evento" value={eventDate} onChange={setEventDate} />
-          <DateField label="Fechamento carrinho" value={cartClose} onChange={setCartClose} />
-        </div>
-        <p className="mt-4 text-[11px] text-slate-600"><CalendarDays size={12} className="mr-1 inline" />Datas editáveis para simular a cadência do lançamento.</p>
-        <div className="mt-5 grid grid-cols-1 gap-3 border-t border-slate-900 pt-5 md:grid-cols-3">
-          <ResultCard label="ROAS alvo" value={`${targetRoas.toFixed(1).replace('.', ',')}x`} />
-          <ResultCard label="Total ingressos" value={number.format(totalTickets)} />
-          <ResultCard label="Vendas produto principal" value={number.format(mainSales)} />
-        </div>
-      </Panel>
-
       <Panel title="Dados reais do ciclo" description="Leitura do último sábado até hoje usando as planilhas conectadas." icon={<Signal size={15} />}>
         <div className="mb-4 flex flex-col gap-3 rounded-xl border border-slate-900 bg-slate-950/60 p-4 md:flex-row md:items-center md:justify-between">
           <div>
@@ -185,6 +166,26 @@ export function Launches() {
           <MetricCard label="ROAS" value={`${currentRoas.toFixed(2).replace('.', ',')}x`} detail="Real do ciclo" tone={currentRoas >= 1 ? 'green' : 'rose'} positive={currentRoas >= 1} />
           <MetricCard label="CPA" value={money.format(currentCpa)} detail="Real do ciclo" tone={currentCpa ? 'blue' : 'rose'} positive={Boolean(currentCpa)} />
           <MetricCard label="Diferença" value={money.format(targetRevenue - currentRevenue)} detail="Até o alvo" tone="blue" />
+        </div>
+      </Panel>
+
+
+      <Panel title="Configuração do lançamento" description="Base financeira e datas principais da campanha." icon={<Rocket size={15} />} action="Referência">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <NumberField label="Faturamento alvo" value={targetRevenue} onChange={setTargetRevenue} prefix="R$" />
+          <NumberField label="Investimento total" value={totalInvestment} onChange={setTotalInvestment} prefix="R$" />
+          <NumberField label="Ticket produto principal" value={mainTicket} onChange={setMainTicket} prefix="R$" />
+          <NumberField label="Conversão produto" value={mainConversion} onChange={setMainConversion} suffix="%" />
+          <DateField label="Início preparação" value={prepStart} onChange={setPrepStart} />
+          <DateField label="Início vendas" value={salesStart} onChange={setSalesStart} />
+          <DateField label="Data do evento" value={eventDate} onChange={setEventDate} />
+          <DateField label="Fechamento carrinho" value={cartClose} onChange={setCartClose} />
+        </div>
+        <p className="mt-4 text-[11px] text-slate-600"><CalendarDays size={12} className="mr-1 inline" />Datas editáveis para simular a cadência do lançamento.</p>
+        <div className="mt-5 grid grid-cols-1 gap-3 border-t border-slate-900 pt-5 md:grid-cols-3">
+          <ResultCard label="ROAS alvo" value={`${targetRoas.toFixed(1).replace('.', ',')}x`} />
+          <ResultCard label="Total ingressos" value={number.format(totalTickets)} />
+          <ResultCard label="Vendas produto principal" value={number.format(mainSales)} />
         </div>
       </Panel>
 

@@ -10,6 +10,7 @@ import { Dashboard } from './components/Dashboard';
 import { Activities } from './components/Activities';
 import { Settings } from './components/Settings';
 import { Finance } from './components/Finance';
+import { Launches } from './components/Launches';
 import { LoginScreen } from './components/LoginScreen';
 import { loadOrCreateProfile, watchAuth, type AccessStatus, type UserProfile } from './lib/auth';
 
@@ -51,6 +52,7 @@ export default function App() {
     if (activePage === 'activities') return <Activities userProfile={userProfile} />;
     if (activePage === 'settings') return <Settings userProfile={userProfile} />;
     if (activePage === 'finance') return userProfile.role === 'admin' ? <Finance /> : <Activities userProfile={userProfile} />;
+    if (activePage === 'launches') return userProfile.role === 'admin' ? <Launches /> : <Activities userProfile={userProfile} />;
 
     return <Dashboard />;
   };

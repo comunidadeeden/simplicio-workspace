@@ -12,7 +12,6 @@ const COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#38bdf8', '#a78bfa', '#64748b'
 const inputClass = 'h-9 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 text-[12px] text-slate-300 outline-none focus:ring-1 focus:ring-blue-600 disabled:cursor-not-allowed disabled:opacity-40';
 
 type LoadStatus = 'loading' | 'ready' | 'error';
-type PeriodPreset = 'all' | '7d' | '30d' | 'month' | 'custom';
 
 export function Dashboard() {
   const [revenue, setRevenue] = useState<SalesRevenuePoint[]>([]);
@@ -21,7 +20,6 @@ export function Dashboard() {
   const [sheetMessage, setSheetMessage] = useState('Carregando planilhas configuradas...');
   const [productFilter, setProductFilter] = useState('Todos');
   const [accountFilter, setAccountFilter] = useState('Todas');
-  const [periodPreset, setPeriodPreset] = useState<PeriodPreset>('all');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
   const [showFilters, setShowFilters] = useState(false);
@@ -50,7 +48,7 @@ export function Dashboard() {
 
   const productOptions = useMemo(() => ['Todos', ...unique(revenue.map((item) => item.platform))], [revenue]);
   const accountOptions = useMemo(() => ['Todas', ...unique(traffic.map((item) => item.account))], [traffic]);
-  const dateRange = useMemo(() => resolveDateRange(periodPreset, customStart, customEnd), [customEnd, customStart, periodPreset]);
+  const dateRange = useMemo(() => ({ start: customStart, end: customEnd }), [customEnd, customStart]);
 
   const filteredRevenue = useMemo(() => revenue.filter((item) => {
     const matchesProduct = productFilter === 'Todos' || item.platform === productFilter;
@@ -67,13 +65,11 @@ export function Dashboard() {
   const totalTraffic = sum(filteredTraffic.map((item) => item.spend));
   const roas = totalTraffic ? totalRevenue / totalTraffic : 0;
   const averageTicket = totalRevenue / Math.max(totalOrders, 1);
-  const mediaShare = totalRevenue ? Math.round((totalTraffic / totalRevenue) * 100) : 0;
-  const contribution = totalRevenue - totalTraffic;
+  const cpa = totalOrders ? totalTraffic / totalOrders : 0;
 
   const trafficByAccount = useMemo(() => groupTrafficByAccount(filteredTraffic), [filteredTraffic]);
   const productData = useMemo(() => groupRevenueByProduct(filteredRevenue), [filteredRevenue]);
   const dailyFlow = useMemo(() => mergeDailyFlow(filteredRevenue, filteredTraffic), [filteredRevenue, filteredTraffic]);
-  const topProducts = productData.slice().sort((a, b) => b.value - a.value).slice(0, 5);
 
   const resetSegmentFilters = () => {
     setProductFilter('Todos');
@@ -91,21 +87,10 @@ export function Dashboard() {
         <div className="flex w-full flex-col gap-3 xl:w-auto xl:items-end">
           <StatusBanner status={status} message={sheetMessage} />
           <div className="flex flex-wrap items-center gap-2 xl:justify-end">
-            <div className="min-w-[170px]">
-              <select className={inputClass} value={periodPreset} onChange={(event) => setPeriodPreset(event.target.value as PeriodPreset)} aria-label="Selecionar período">
-                <option value="all">Todo período</option>
-                <option value="7d">Últimos 7 dias</option>
-                <option value="30d">Últimos 30 dias</option>
-                <option value="month">Mês atual</option>
-                <option value="custom">Personalizado</option>
-              </select>
+            <div className="grid grid-cols-2 gap-2">
+              <input className="h-9 rounded-lg border border-slate-800 bg-slate-950 px-3 text-[12px] text-slate-300 outline-none focus:ring-1 focus:ring-blue-600" type="date" value={customStart} onChange={(event) => setCustomStart(event.target.value)} aria-label="Data inicial" />
+              <input className="h-9 rounded-lg border border-slate-800 bg-slate-950 px-3 text-[12px] text-slate-300 outline-none focus:ring-1 focus:ring-blue-600" type="date" value={customEnd} onChange={(event) => setCustomEnd(event.target.value)} aria-label="Data final" />
             </div>
-            {periodPreset === 'custom' && (
-              <>
-                <input className="h-9 rounded-lg border border-slate-800 bg-slate-950 px-3 text-[12px] text-slate-300 outline-none focus:ring-1 focus:ring-blue-600" type="date" value={customStart} onChange={(event) => setCustomStart(event.target.value)} aria-label="Data inicial" />
-                <input className="h-9 rounded-lg border border-slate-800 bg-slate-950 px-3 text-[12px] text-slate-300 outline-none focus:ring-1 focus:ring-blue-600" type="date" value={customEnd} onChange={(event) => setCustomEnd(event.target.value)} aria-label="Data final" />
-              </>
-            )}
             <button
               type="button"
               onClick={() => setShowFilters((value) => !value)}
@@ -140,10 +125,10 @@ export function Dashboard() {
 
       <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
         <MetricCard label="Faturamento" value={money.format(totalRevenue)} detail={`${number.format(totalOrders)} pedido(s)`} icon={TrendingUp} tone="blue" positive />
-        <MetricCard label="Mídia paga" value={money.format(totalTraffic)} detail={`${number.format(filteredTraffic.length)} linha(s) de tráfego`} icon={ArrowDownRight} tone="amber" />
+        <MetricCard label="Tráfego" value={money.format(totalTraffic)} detail={`${number.format(filteredTraffic.length)} linha(s) importada(s)`} icon={ArrowDownRight} tone="amber" />
         <MetricCard label="ROAS" value={roas.toFixed(2).replace('.', ',')} detail="Receita / mídia" icon={Target} tone={roas >= 2 ? 'green' : roas >= 1 ? 'amber' : 'rose'} positive={roas >= 1} />
         <MetricCard label="Ticket médio" value={money.format(averageTicket)} detail="Receita por pedido" icon={Wallet} tone="green" positive />
-        <MetricCard label="Contribuição" value={money.format(contribution)} detail={`${mediaShare}% da receita em mídia`} icon={ArrowUpRight} tone={contribution >= 0 ? 'green' : 'rose'} positive={contribution >= 0} />
+        <MetricCard label="CPA" value={money.format(cpa)} detail="Custo por pedido" icon={ArrowUpRight} tone={cpa ? 'blue' : 'rose'} positive={Boolean(cpa)} />
       </section>
 
       {status === 'error' && (
@@ -185,13 +170,28 @@ export function Dashboard() {
       </section>
 
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-        <Panel className="xl:col-span-4" title="Mix de produtos" description="Participação do faturamento por produto.">
-          <div className="h-[230px]"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={productData} innerRadius={58} outerRadius={88} dataKey="value" paddingAngle={3}>{productData.map((_, index) => <Cell key={index} fill={COLORS[index % COLORS.length]} />)}</Pie><Tooltip contentStyle={{ backgroundColor: '#020617', border: '1px solid #1e293b', borderRadius: '8px', fontSize: '11px' }} formatter={(value) => money.format(Number(value))} /></PieChart></ResponsiveContainer></div>
+        <Panel className="xl:col-span-7" title="Faturamento por produto" description="Participação visual do faturamento no período filtrado.">
+          <div className="grid gap-5 lg:grid-cols-[minmax(240px,1fr)_260px] lg:items-center">
+            <div className="relative h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={productData} innerRadius={72} outerRadius={116} dataKey="value" paddingAngle={4} stroke="#020617" strokeWidth={4}>
+                    {productData.map((_, index) => <Cell key={index} fill={COLORS[index % COLORS.length]} />)}
+                  </Pie>
+                  <Tooltip contentStyle={{ backgroundColor: '#020617', border: '1px solid #1e293b', borderRadius: '8px', fontSize: '11px' }} formatter={(value) => money.format(Number(value))} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-600">Total</span>
+                <span className="mt-1 font-mono text-lg font-bold text-slate-100">{money.format(totalRevenue)}</span>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {productData.length ? productData.slice(0, 6).map((item, index) => <div key={item.name}><ProductLegend item={item} total={totalRevenue} color={COLORS[index % COLORS.length]} /></div>) : <EmptyText text="Sem produtos no período." />}
+            </div>
+          </div>
         </Panel>
-        <Panel className="xl:col-span-4" title="Ranking de produtos" description="Onde a receita está concentrada.">
-          <div className="space-y-3">{topProducts.length ? topProducts.map((item, index) => <div key={item.name}><RankLine index={index + 1} label={item.name} value={money.format(item.value)} percent={totalRevenue ? Math.round((item.value / totalRevenue) * 100) : 0} /></div>) : <EmptyText text="Sem produtos no período." />}</div>
-        </Panel>
-        <Panel className="xl:col-span-4" title="Vendas recentes" description="Últimos registros encontrados na planilha.">
+        <Panel className="xl:col-span-5" title="Vendas recentes" description="Últimos registros encontrados na planilha.">
           <div className="space-y-3">{filteredRevenue.slice(-6).reverse().map((item, index) => <div key={`${item.date}-${index}`}><SummaryLine label={`${item.platform} · ${item.label}`} value={money.format(item.revenue)} /></div>)}{!filteredRevenue.length && <EmptyText text="Sem vendas no período." />}</div>
         </Panel>
       </section>
@@ -221,8 +221,9 @@ function SummaryLine({ label, value, color }: { label: string; value: string; co
   return <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-900 bg-slate-950/70 px-3 py-2"><span className="flex min-w-0 items-center gap-2 text-[11px] text-slate-500">{color && <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />}<span className="truncate">{label}</span></span><span className="font-mono text-[12px] font-bold text-slate-200">{value}</span></div>;
 }
 
-function RankLine({ index, label, value, percent }: { index: number; label: string; value: string; percent: number }) {
-  return <div className="rounded-lg border border-slate-900 bg-slate-950/70 p-3"><div className="mb-2 flex items-center justify-between gap-3"><span className="truncate text-[12px] font-semibold text-slate-300">{index}. {label}</span><span className="font-mono text-[11px] text-slate-400">{value}</span></div><div className="h-1.5 overflow-hidden rounded-full bg-slate-900"><div className="h-full rounded-full bg-blue-500" style={{ width: `${percent}%` }} /></div><p className="mt-1 text-[10px] text-slate-600">{percent}% do faturamento filtrado</p></div>;
+function ProductLegend({ item, total, color }: { item: { name: string; value: number }; total: number; color: string }) {
+  const percent = total ? Math.round((item.value / total) * 100) : 0;
+  return <div className="rounded-lg border border-slate-900 bg-slate-950/70 p-3"><div className="mb-2 flex items-center justify-between gap-3"><span className="flex min-w-0 items-center gap-2 text-[12px] font-semibold text-slate-300"><span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: color }} /><span className="truncate">{item.name}</span></span><span className="font-mono text-[11px] text-slate-400">{percent}%</span></div><div className="h-1.5 overflow-hidden rounded-full bg-slate-900"><div className="h-full rounded-full" style={{ width: `${percent}%`, backgroundColor: color }} /></div><p className="mt-1 font-mono text-[11px] text-slate-500">{money.format(item.value)}</p></div>;
 }
 
 function EmptyText({ text }: { text: string }) {
@@ -258,15 +259,6 @@ function mergeDailyFlow(revenue: SalesRevenuePoint[], traffic: TrafficSpendPoint
   return Object.entries(groups).sort(([first], [second]) => first.localeCompare(second)).map(([, value]) => value);
 }
 
-function resolveDateRange(preset: PeriodPreset, customStart: string, customEnd: string) {
-  const today = startOfDay(new Date());
-  if (preset === 'custom') return { start: customStart, end: customEnd };
-  if (preset === '7d') return { start: toIso(addDays(today, -6)), end: toIso(today) };
-  if (preset === '30d') return { start: toIso(addDays(today, -29)), end: toIso(today) };
-  if (preset === 'month') return { start: `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`, end: toIso(today) };
-  return { start: '', end: '' };
-}
-
 function matchesDate(date: string, start: string, end: string) {
   return (!start || date >= start) && (!end || date <= end);
 }
@@ -282,22 +274,6 @@ function unique(values: string[]) {
 
 function sum(values: number[]) {
   return values.reduce((total, value) => total + value, 0);
-}
-
-function addDays(date: Date, days: number) {
-  const next = new Date(date);
-  next.setDate(next.getDate() + days);
-  return next;
-}
-
-function startOfDay(date: Date) {
-  const next = new Date(date);
-  next.setHours(0, 0, 0, 0);
-  return next;
-}
-
-function toIso(date: Date) {
-  return date.toISOString().slice(0, 10);
 }
 
 function formatDate(date: string) {

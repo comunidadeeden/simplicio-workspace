@@ -118,14 +118,19 @@ export function Settings() {
       void inspectSheetConnection(isSales ? 'sales' : 'ads', draft.spreadsheetUrl, draft.gid).then((preview) => {
         setDetectedColumns(preview.columns);
         setInspectState('ready');
-        setInspectMessage(`${preview.columns.length} colunas detectadas em ${preview.rowCount} linhas.`);
+        const requiredColumnsFound = isSales
+          ? Boolean(preview.detected.dateColumn && preview.detected.revenueColumn)
+          : Boolean(preview.detected.dateColumn && preview.detected.spendColumn);
+        setInspectMessage(requiredColumnsFound
+          ? `${preview.columns.length} colunas detectadas em ${preview.rowCount} linhas.`
+          : `${preview.columns.length} colunas detectadas, mas não encontrei as colunas essenciais para esse tipo de conexão.`);
         if (isSales) {
           setSalesDraft((current) => current.spreadsheetUrl === draft.spreadsheetUrl && current.gid === draft.gid
-            ? { ...current, ...pickDetected(preview.detected) }
+            ? { ...current, ...preview.detected }
             : current);
         } else {
           setAdDraft((current) => current.spreadsheetUrl === draft.spreadsheetUrl && current.gid === draft.gid
-            ? { ...current, ...pickDetected(preview.detected) }
+            ? { ...current, ...preview.detected }
             : current);
         }
       }).catch((error) => {
@@ -364,11 +369,6 @@ type InspectState = 'idle' | 'checking' | 'ready' | 'error';
 function SheetInspection({ state, message, columns }: { state: InspectState; message: string; columns: string[] }) {
   return <div className={cn('rounded-xl border px-3 py-3 text-[11px]', state === 'error' ? 'border-rose-500/20 bg-rose-500/10 text-rose-200' : state === 'ready' ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-200' : 'border-slate-800 bg-slate-950/70 text-slate-500')}><div className="flex items-center gap-2"><RefreshCw size={12} className={cn(state === 'checking' && 'animate-spin')} /><span>{message}</span></div>{columns.length > 0 && <div className="mt-3 flex flex-wrap gap-1.5">{columns.slice(0, 18).map((column) => <span key={column} className="rounded border border-slate-800 bg-slate-950 px-2 py-1 font-mono text-[10px] text-slate-400">{column}</span>)}{columns.length > 18 && <span className="rounded border border-slate-800 bg-slate-950 px-2 py-1 font-mono text-[10px] text-slate-500">+{columns.length - 18}</span>}</div>}</div>;
 }
-
-function pickDetected<T extends object>(detected: Partial<T>): Partial<T> {
-  return Object.fromEntries(Object.entries(detected).filter(([, value]) => typeof value !== 'string' || value.trim())) as Partial<T>;
-}
-
 function WebhookForm({ draft, onChange }: { draft: WebhookConfig; onChange: (draft: WebhookConfig) => void }) {
   return <div className="space-y-4"><Field label="Nome"><input className={inputClass} value={draft.name} onChange={(event) => onChange({ ...draft, name: event.target.value })} /></Field><Field label="URL"><input className={inputClass} value={draft.url} onChange={(event) => onChange({ ...draft, url: event.target.value })} /></Field><Field label="Envio"><select className={inputClass} value={draft.cadence} onChange={(event) => onChange({ ...draft, cadence: event.target.value })}><option>Diário às 08:30</option><option>Diário às 18:00</option><option>Segunda, quarta e sexta</option><option>Manual</option></select></Field><div className="grid grid-cols-1 gap-3 md:grid-cols-2"><Toggle label="Incluir responsáveis" checked={draft.includeOwners} onChange={() => onChange({ ...draft, includeOwners: !draft.includeOwners })} /><Toggle label="Incluir prazos" checked={draft.includeDueDates} onChange={() => onChange({ ...draft, includeDueDates: !draft.includeDueDates })} /></div><button className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-blue-500/20 bg-blue-500/10 px-3 py-2 text-[11px] font-bold text-blue-300 transition-colors hover:text-blue-100"><BellRing size={13} />Testar webhook</button></div>;
 }

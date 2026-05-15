@@ -110,6 +110,18 @@ export function Launches() {
   const costPerPageView = pageConversion ? cpc / (pageConversion / 100) : 0;
   const simulatedCac = (pageConversion && mainConversion) ? cpc / (pageConversion / 100) / (mainConversion / 100) : 0;
 
+  const applyRealCycleToSimulation = () => {
+    const averageTicket = currentOrders ? currentRevenue / currentOrders : 0;
+    if (currentSpend > 0) setTotalInvestment(round(currentSpend));
+    if (currentRevenue > 0) setTargetRevenue(round(currentRevenue));
+    if (currentOrders > 0) setLotQuantity(Math.round(currentOrders));
+    if (averageTicket > 0) setLotPrice(round(averageTicket));
+    setPrepStart(cycleStart);
+    setSalesStart(cycleStart);
+    setEventDate(cycleEnd);
+    setCartClose(cycleEnd);
+  };
+
   return (
     <div className="mx-auto max-w-[1500px] space-y-6 p-10 text-slate-300">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
@@ -153,6 +165,20 @@ export function Launches() {
       </Panel>
 
       <Panel title="Dados reais do ciclo" description="Leitura do último sábado até hoje usando as planilhas conectadas." icon={<Signal size={15} />}>
+        <div className="mb-4 flex flex-col gap-3 rounded-xl border border-slate-900 bg-slate-950/60 p-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-[12px] font-semibold text-slate-200">Usar o ciclo real como base da simulação</p>
+            <p className="mt-1 text-[11px] leading-5 text-slate-500">Preenche investimento, faturamento, lotes e datas com os dados já importados. Depois é só mexer nos campos para testar melhorias.</p>
+          </div>
+          <button
+            type="button"
+            onClick={applyRealCycleToSimulation}
+            disabled={!currentSpend && !currentRevenue && !currentOrders}
+            className="inline-flex h-9 shrink-0 items-center justify-center rounded-lg border border-red-500/30 bg-red-500/10 px-3 text-[11px] font-semibold text-red-200 transition-colors hover:bg-red-500/15 disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-slate-900/40 disabled:text-slate-600"
+          >
+            Puxar dados reais
+          </button>
+        </div>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
           <MetricCard label="Tráfego" value={money.format(currentSpend)} detail={`${number.format(cycleTraffic.length)} registro(s)`} tone="amber" />
           <MetricCard label="Vendas" value={number.format(currentOrders)} detail={money.format(currentRevenue)} tone="green" positive />
@@ -314,4 +340,8 @@ function daysBetween(start: string, end: string) {
 
 function sum(values: number[]) {
   return values.reduce((total, value) => total + value, 0);
+}
+
+function round(value: number) {
+  return Math.round(value * 100) / 100;
 }

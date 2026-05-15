@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { AlertTriangle, BrainCircuit, Filter, RefreshCw, Search, Sparkles, Target, Ticket, Users } from 'lucide-react';
+import { AlertTriangle, ArrowDownUp, BrainCircuit, ChevronDown, Filter, RefreshCw, Search, Sparkles, Target, Ticket, Users } from 'lucide-react';
 import { defaultIntegrationSettings, subscribeIntegrationSettings } from '../lib/integrations';
 import { loadLeadScoreData, type LeadTemperature, type ScoredLead } from '../lib/leads';
 import { cn } from '../lib/utils';
@@ -11,6 +11,8 @@ const inputClass = 'h-9 rounded-lg border border-slate-800 bg-slate-950 px-3 tex
 type LoadStatus = 'loading' | 'ready' | 'error';
 type TemperatureFilter = 'Todos' | LeadTemperature;
 type StageFilter = 'Todos' | 'Comprou ingresso' | 'Comprou Éden' | 'Outro produto';
+type SortKey = 'score' | 'date' | 'amount' | 'name';
+type SortDirection = 'asc' | 'desc';
 
 export function Leads() {
   const [leads, setLeads] = useState<ScoredLead[]>([]);
@@ -20,6 +22,9 @@ export function Leads() {
   const [search, setSearch] = useState('');
   const [temperature, setTemperature] = useState<TemperatureFilter>('Todos');
   const [stage, setStage] = useState<StageFilter>('Todos');
+  const [sortKey, setSortKey] = useState<SortKey>('score');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [expandedLeadId, setExpandedLeadId] = useState<string>('');
 
   useEffect(() => {
     return subscribeIntegrationSettings(
@@ -43,19 +48,31 @@ export function Leads() {
     );
   }, []);
 
-  const filteredLeads = useMemo(() => leads.filter((lead) => {
-    const query = search.trim().toLowerCase();
-    const matchesSearch = !query || [lead.name, lead.email, lead.phone, lead.product, lead.campaign, lead.source].join(' ').toLowerCase().includes(query);
-    const matchesTemperature = temperature === 'Todos' || lead.temperature === temperature;
-    const matchesStage = stage === 'Todos' || lead.stage === stage;
-    return matchesSearch && matchesTemperature && matchesStage;
-  }), [leads, search, stage, temperature]);
+  const filteredLeads = useMemo(() => {
+    const filtered = leads.filter((lead) => {
+      const query = search.trim().toLowerCase();
+      const matchesSearch = !query || [lead.name, lead.email, lead.phone, lead.product, lead.campaign, lead.source, lead.location, lead.paymentMethod].join(' ').toLowerCase().includes(query);
+      const matchesTemperature = temperature === 'Todos' || lead.temperature === temperature;
+      const matchesStage = stage === 'Todos' || lead.stage === stage;
+      return matchesSearch && matchesTemperature && matchesStage;
+    });
+    return filtered.sort((a, b) => compareLeads(a, b, sortKey, sortDirection));
+  }, [leads, search, sortDirection, sortKey, stage, temperature]);
 
   const hotLeads = leads.filter((lead) => lead.temperature === 'Quente');
   const workshopLeads = leads.filter((lead) => lead.stage === 'Comprou ingresso');
   const edenLeads = leads.filter((lead) => lead.stage === 'Comprou Éden');
   const averageScore = leads.length ? Math.round(leads.reduce((total, lead) => total + lead.score, 0) / leads.length) : 0;
   const potentialRevenue = hotLeads.filter((lead) => lead.stage !== 'Comprou Éden').length * 697;
+
+  const setSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDirection((value) => value === 'desc' ? 'asc' : 'desc');
+      return;
+    }
+    setSortKey(key);
+    setSortDirection(key === 'name' ? 'asc' : 'desc');
+  };
 
   return (
     <div className="mx-auto max-w-[1500px] space-y-6 p-10 text-slate-300">
@@ -84,70 +101,82 @@ export function Leads() {
 
       <section className="rounded-2xl border border-slate-900/60 bg-slate-950 p-4">
         <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-          <div className="flex items-center gap-2 text-[12px] font-semibold text-slate-300"><Filter size={14} className="text-blue-400" />Filtros de score</div>
-          <div className="grid grid-cols-1 gap-2 md:grid-cols-3 xl:w-[760px]">
-            <div className="relative"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600" /><input className={cn(inputClass, 'w-full pl-8')} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar lead, campanha ou produto" /></div>
+          <div className="flex items-center gap-2 text-[12px] font-semibold text-slate-300"><Filter size={14} className="text-blue-400" />Filtros e ordenação</div>
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-5 xl:w-[980px]">
+            <div className="relative xl:col-span-2"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600" /><input className={cn(inputClass, 'w-full pl-8')} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar lead, campanha, origem ou produto" /></div>
             <select className={cn(inputClass, 'w-full')} value={temperature} onChange={(event) => setTemperature(event.target.value as TemperatureFilter)}><option>Todos</option><option>Quente</option><option>Morno</option><option>Frio</option></select>
             <select className={cn(inputClass, 'w-full')} value={stage} onChange={(event) => setStage(event.target.value as StageFilter)}><option>Todos</option><option>Comprou ingresso</option><option>Comprou Éden</option><option>Outro produto</option></select>
+            <select className={cn(inputClass, 'w-full')} value={`${sortKey}:${sortDirection}`} onChange={(event) => { const [key, direction] = event.target.value.split(':') as [SortKey, SortDirection]; setSortKey(key); setSortDirection(direction); }}>
+              <option value="score:desc">Maior score</option>
+              <option value="score:asc">Menor score</option>
+              <option value="date:desc">Mais recentes</option>
+              <option value="date:asc">Mais antigos</option>
+              <option value="amount:desc">Maior valor</option>
+              <option value="name:asc">Nome A-Z</option>
+            </select>
           </div>
         </div>
-        <p className="text-[11px] leading-5 text-slate-600">Colunas detectadas: {columns.length ? columns.slice(0, 12).join(', ') : 'aguardando leitura da planilha'}</p>
+        <p className="text-[11px] leading-5 text-slate-600">Colunas reconhecidas: {columns.length ? columns.slice(0, 18).join(', ') : 'aguardando leitura da planilha'}</p>
       </section>
 
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-12">
-        <div className="xl:col-span-8 space-y-3">
-          {filteredLeads.map((lead) => <div key={lead.id}><LeadRow lead={lead} /></div>)}
+      <section className="rounded-2xl border border-slate-900/60 bg-slate-950">
+        <div className="grid grid-cols-[minmax(220px,1.45fr)_96px_132px_120px_minmax(140px,1fr)_110px_34px] gap-3 border-b border-slate-900 px-4 py-3 text-[10px] font-semibold uppercase tracking-widest text-slate-600 max-xl:hidden">
+          <SortHeader label="Lead" active={sortKey === 'name'} direction={sortDirection} onClick={() => setSort('name')} />
+          <SortHeader label="Score" active={sortKey === 'score'} direction={sortDirection} onClick={() => setSort('score')} />
+          <span>Estágio</span>
+          <SortHeader label="Valor" active={sortKey === 'amount'} direction={sortDirection} onClick={() => setSort('amount')} />
+          <span>Origem</span>
+          <SortHeader label="Data" active={sortKey === 'date'} direction={sortDirection} onClick={() => setSort('date')} />
+          <span />
+        </div>
+        <div className="divide-y divide-slate-900/80">
+          {filteredLeads.map((lead) => <div key={lead.id}><LeadListItem lead={lead} expanded={expandedLeadId === lead.id} onToggle={() => setExpandedLeadId((value) => value === lead.id ? '' : lead.id)} /></div>)}
           {!filteredLeads.length && <EmptyText text="Nenhum lead encontrado com os filtros atuais." />}
         </div>
-        <aside className="xl:col-span-4 space-y-4">
-          <Panel title="Como o score nasce" icon={<BrainCircuit size={15} />}>
-            <div className="space-y-3 text-[12px] leading-5 text-slate-500">
-              <Insight title="Entrada no funil" text="Comprar ingresso do Workshop Bússola da Cura aumenta bastante a nota, porque é o primeiro compromisso pago." />
-              <Insight title="Sinais de contato" text="E-mail, WhatsApp, campanha e status aprovado melhoram a confiabilidade e a chance de abordagem." />
-              <Insight title="IA no próximo passo" text="A IA vai ler respostas abertas, dores e intenção para explicar por que um lead é quente ou frio." />
-            </div>
-          </Panel>
-          <Panel title="Próximas conexões" icon={<Sparkles size={15} />}>
-            <ul className="space-y-2 text-[12px] leading-5 text-slate-500">
-              <li>Presença na live para recalcular score depois do evento.</li>
-              <li>Eventos de WhatsApp e checkout abandonado.</li>
-              <li>Histórico de compradores antigos para calibrar pesos.</li>
-            </ul>
-          </Panel>
-        </aside>
       </section>
     </div>
   );
 }
 
-function LeadRow({ lead }: { lead: ScoredLead }) {
+function LeadListItem({ lead, expanded, onToggle }: { lead: ScoredLead; expanded: boolean; onToggle: () => void }) {
   return (
-    <article className="rounded-2xl border border-slate-900/60 bg-slate-950 p-4">
-      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+    <article className="px-4 py-3">
+      <button type="button" onClick={onToggle} className="grid w-full grid-cols-1 gap-3 text-left xl:grid-cols-[minmax(220px,1.45fr)_96px_132px_120px_minmax(140px,1fr)_110px_34px] xl:items-center">
         <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="truncate text-sm font-semibold text-slate-100">{lead.name}</h2>
-            <Badge temperature={lead.temperature} />
-            <span className="rounded-full border border-slate-800 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-slate-500">{lead.stage}</span>
+          <div className="flex min-w-0 items-center gap-2"><p className="truncate text-[13px] font-semibold text-slate-100">{lead.name}</p><Badge temperature={lead.temperature} /></div>
+          <p className="mt-1 truncate text-[11px] text-slate-500">{lead.email || lead.phone || 'sem contato identificado'}</p>
+        </div>
+        <div><p className="font-mono text-lg font-bold text-slate-100">{lead.score}</p><p className="text-[10px] text-slate-600 xl:hidden">score</p></div>
+        <div><span className="rounded-full border border-slate-800 px-2 py-1 text-[10px] font-semibold uppercase tracking-widest text-slate-500">{lead.stage}</span></div>
+        <div className="font-mono text-[12px] text-slate-300">{money.format(lead.amount)}</div>
+        <div className="min-w-0"><p className="truncate text-[12px] text-slate-400">{lead.source || lead.campaign || 'Não identificada'}</p><p className="mt-1 truncate text-[10px] text-slate-600">{lead.product}</p></div>
+        <div className="font-mono text-[11px] text-slate-500">{formatDate(lead.date)}</div>
+        <ChevronDown size={15} className={cn('text-slate-600 transition-transform max-xl:hidden', expanded && 'rotate-180')} />
+      </button>
+      {expanded && (
+        <div className="mt-4 rounded-xl border border-slate-900 bg-slate-950/70 p-4">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <MiniStat label="Telefone" value={lead.phone || 'Não identificado'} />
+            <MiniStat label="Documento" value={lead.document || 'Não identificado'} />
+            <MiniStat label="Localização" value={lead.location || 'Não identificada'} />
+            <MiniStat label="Pagamento" value={lead.paymentMethod || 'Não identificado'} />
           </div>
-          <p className="mt-1 truncate text-[11px] text-slate-500">{lead.email || 'sem e-mail'} · {lead.phone || 'sem telefone'}</p>
-          <p className="mt-2 text-[12px] text-slate-400">{lead.product}</p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {lead.signals.map((signal) => <span key={signal} className="rounded-full border border-slate-800 bg-slate-900/50 px-2.5 py-1 text-[11px] text-slate-400">{signal}</span>)}
+          </div>
+          {lead.usefulFields.length > 0 && (
+            <div className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
+              {lead.usefulFields.slice(0, 9).map((field) => <div key={`${field.label}-${field.value}`}><MiniStat label={field.label} value={field.value} /></div>)}
+            </div>
+          )}
         </div>
-        <div className="text-left md:text-right">
-          <p className="font-mono text-3xl font-bold text-slate-100">{lead.score}</p>
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-600">score</p>
-        </div>
-      </div>
-      <div className="mt-4 grid grid-cols-1 gap-3 border-t border-slate-900 pt-4 md:grid-cols-3">
-        <MiniStat label="Valor" value={money.format(lead.amount)} />
-        <MiniStat label="Origem" value={lead.source || 'Não identificada'} />
-        <MiniStat label="Campanha" value={lead.campaign || 'Não identificada'} />
-      </div>
-      <div className="mt-4 flex flex-wrap gap-2">
-        {lead.signals.map((signal) => <span key={signal} className="rounded-full border border-slate-800 bg-slate-900/50 px-2.5 py-1 text-[11px] text-slate-400">{signal}</span>)}
-      </div>
+      )}
     </article>
   );
+}
+
+function SortHeader({ label, active, direction, onClick }: { label: string; active: boolean; direction: SortDirection; onClick: () => void }) {
+  return <button type="button" onClick={onClick} className={cn('flex items-center gap-1 text-left transition-colors hover:text-slate-300', active && 'text-blue-400')}><span>{label}</span><ArrowDownUp size={11} className={cn(active ? 'opacity-100' : 'opacity-40', direction === 'asc' && 'rotate-180')} /></button>;
 }
 
 function StatusBanner({ status, message }: { status: LoadStatus; message: string }) {
@@ -162,21 +191,26 @@ function MetricCard({ label, value, detail, icon: Icon, tone }: { label: string;
 
 function Badge({ temperature }: { temperature: LeadTemperature }) {
   const tone = temperature === 'Quente' ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300' : temperature === 'Morno' ? 'border-amber-500/20 bg-amber-500/10 text-amber-300' : 'border-slate-800 bg-slate-900/60 text-slate-400';
-  return <span className={cn('rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest', tone)}>{temperature}</span>;
+  return <span className={cn('shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest', tone)}>{temperature}</span>;
 }
 
 function MiniStat({ label, value }: { label: string; value: string }) {
   return <div className="rounded-lg border border-slate-900 bg-slate-950/70 p-3"><p className="text-[10px] font-semibold uppercase tracking-widest text-slate-600">{label}</p><p className="mt-1 truncate font-mono text-[12px] text-slate-300">{value}</p></div>;
 }
 
-function Panel({ title, icon, children }: { title: string; icon: ReactNode; children: ReactNode }) {
-  return <section className="rounded-2xl border border-slate-900/60 bg-slate-950 p-5"><h2 className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-100"><span className="text-blue-400">{icon}</span>{title}</h2>{children}</section>;
-}
-
-function Insight({ title, text }: { title: string; text: string }) {
-  return <div className="rounded-lg border border-slate-900 bg-slate-950/70 p-3"><p className="font-semibold text-slate-300">{title}</p><p className="mt-1">{text}</p></div>;
-}
-
 function EmptyText({ text }: { text: string }) {
-  return <p className="rounded-lg border border-slate-900 bg-slate-950/70 p-4 text-[12px] text-slate-500">{text}</p>;
+  return <p className="p-4 text-[12px] text-slate-500">{text}</p>;
+}
+
+function compareLeads(a: ScoredLead, b: ScoredLead, key: SortKey, direction: SortDirection) {
+  const multiplier = direction === 'desc' ? -1 : 1;
+  if (key === 'name') return a.name.localeCompare(b.name) * multiplier;
+  if (key === 'date') return a.date.localeCompare(b.date) * multiplier;
+  if (key === 'amount') return (a.amount - b.amount) * multiplier;
+  return (a.score - b.score) * multiplier;
+}
+
+function formatDate(date: string) {
+  if (!date) return 'sem data';
+  return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short' }).format(new Date(`${date}T00:00:00`));
 }

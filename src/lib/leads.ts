@@ -14,6 +14,10 @@ export interface ScoredLead {
   amount: number;
   source: string;
   campaign: string;
+  document: string;
+  location: string;
+  paymentMethod: string;
+  usefulFields: { label: string; value: string }[];
   stage: LeadStage;
   score: number;
   temperature: LeadTemperature;
@@ -41,9 +45,9 @@ export async function loadLeadScoreData(settings: IntegrationSettings): Promise<
   const columns = rows[0] ? Object.keys(rows[0]) : [];
   const grouped = new Map<string, Record<string, string>[]>();
   rows.forEach((row, index) => {
-    const email = readColumn(row, ['email', 'e-mail', 'mail', 'comprador email', 'email comprador']);
-    const phone = readColumn(row, ['telefone', 'celular', 'whatsapp', 'phone', 'comprador telefone']);
-    const fallback = `${readColumn(row, ['nome', 'name', 'cliente', 'comprador']) || 'lead'}-${index}`;
+    const email = readEmail(row);
+    const phone = readPhone(row);
+    const fallback = `${readName(row) || 'lead'}-${index}`;
     const key = normalizeKey(email || phone || fallback);
     grouped.set(key, [...(grouped.get(key) ?? []), row]);
   });
@@ -61,12 +65,16 @@ function scoreLead(id: string, purchases: Record<string, string>[]): ScoredLead 
   const hasWorkshop = products.some(isWorkshopProduct);
   const hasEden = products.some(isEdenProduct);
   const amount = sum(purchases.map(readAmount));
-  const name = readColumn(latest, ['nome', 'name', 'cliente', 'comprador', 'nome comprador', 'customer name']) || 'Lead sem nome';
-  const email = readColumn(latest, ['email', 'e-mail', 'mail', 'comprador email', 'email comprador']);
-  const phone = readColumn(latest, ['telefone', 'celular', 'whatsapp', 'phone', 'comprador telefone']);
-  const status = readColumn(latest, ['status', 'situação', 'situacao', 'estado', 'pagamento']);
-  const source = readColumn(latest, ['origem', 'source', 'utm_source', 'utm source', 'canal']);
-  const campaign = readColumn(latest, ['campanha', 'campaign', 'utm_campaign', 'utm campaign', 'utm_content', 'utm content']);
+  const name = readName(latest) || 'Lead sem nome';
+  const email = readEmail(latest);
+  const phone = readPhone(latest);
+  const status = readStatus(latest);
+  const source = readSource(latest);
+  const campaign = readCampaign(latest);
+  const document = readDocument(latest);
+  const location = readLocation(latest);
+  const paymentMethod = readPaymentMethod(latest);
+  const usefulFields = buildUsefulFields(latest);
   const product = readProduct(latest) || products[0] || 'Produto não identificado';
   const signals: string[] = [];
   let score = 20;
@@ -105,6 +113,10 @@ function scoreLead(id: string, purchases: Record<string, string>[]): ScoredLead 
     amount,
     source,
     campaign,
+    document,
+    location,
+    paymentMethod,
+    usefulFields,
     stage,
     score,
     temperature,
@@ -171,21 +183,130 @@ function parseCsv(csv: string) {
 }
 
 function readProduct(row: Record<string, string>) {
-  return readColumn(row, ['produto', 'product', 'produto nome', 'nome produto', 'plataforma', 'offer', 'oferta']);
+  return readSmartColumn(row, {
+    aliases: ['produto', 'product', 'produto nome', 'nome produto', 'plataforma', 'offer', 'oferta', 'item', 'plano'],
+    includes: ['produto', 'product', 'oferta', 'offer', 'item', 'plano'],
+    excludes: ['id', 'codigo', 'código'],
+  });
+}
+
+function readName(row: Record<string, string>) {
+  return readSmartColumn(row, {
+    aliases: ['nome', 'name', 'cliente', 'comprador', 'nome comprador', 'customer name', 'nome completo', 'full name', 'buyer name', 'aluno'],
+    includes: ['nome', 'name', 'cliente', 'comprador', 'customer', 'buyer', 'aluno'],
+    excludes: ['produto', 'product', 'campanha', 'utm', 'status', 'metodo', 'método'],
+  });
+}
+
+function readEmail(row: Record<string, string>) {
+  return readSmartColumn(row, {
+    aliases: ['email', 'e-mail', 'mail', 'comprador email', 'email comprador', 'customer email', 'buyer email'],
+    includes: ['email', 'mail'],
+  });
+}
+
+function readPhone(row: Record<string, string>) {
+  return readSmartColumn(row, {
+    aliases: ['telefone', 'celular', 'whatsapp', 'phone', 'comprador telefone', 'telefone comprador', 'customer phone', 'buyer phone'],
+    includes: ['telefone', 'celular', 'whatsapp', 'phone', 'fone', 'contato'],
+  });
+}
+
+function readStatus(row: Record<string, string>) {
+  return readSmartColumn(row, {
+    aliases: ['status', 'situação', 'situacao', 'estado', 'pagamento', 'status pagamento', 'payment status'],
+    includes: ['status', 'situacao', 'situação', 'pagamento', 'payment'],
+    excludes: ['metodo', 'método', 'method'],
+  });
+}
+
+function readSource(row: Record<string, string>) {
+  return readSmartColumn(row, {
+    aliases: ['origem', 'source', 'utm_source', 'utm source', 'canal', 'utm origem'],
+    includes: ['origem', 'source', 'canal', 'utm_source'],
+  });
+}
+
+function readCampaign(row: Record<string, string>) {
+  return readSmartColumn(row, {
+    aliases: ['campanha', 'campaign', 'utm_campaign', 'utm campaign', 'utm_content', 'utm content', 'anuncio', 'anúncio', 'criativo'],
+    includes: ['campanha', 'campaign', 'utm_campaign', 'utm_content', 'anuncio', 'anúncio', 'criativo'],
+  });
+}
+
+function readDocument(row: Record<string, string>) {
+  return readSmartColumn(row, {
+    aliases: ['cpf', 'documento', 'document', 'doc', 'cnpj'],
+    includes: ['cpf', 'documento', 'document', 'cnpj'],
+  });
+}
+
+function readLocation(row: Record<string, string>) {
+  const city = readSmartColumn(row, { aliases: ['cidade', 'city', 'município', 'municipio'], includes: ['cidade', 'city', 'municipio', 'município'] });
+  const state = readSmartColumn(row, { aliases: ['estado', 'uf', 'state'], includes: ['estado', 'uf', 'state'], excludes: ['status'] });
+  return [city, state].filter(Boolean).join(' / ');
+}
+
+function readPaymentMethod(row: Record<string, string>) {
+  return readSmartColumn(row, {
+    aliases: ['método pagamento', 'metodo pagamento', 'forma pagamento', 'payment method', 'payment_method', 'forma de pagamento'],
+    includes: ['metodo', 'método', 'forma pagamento', 'payment_method', 'payment method'],
+  });
 }
 
 function readDate(row: Record<string, string>) {
-  return parseDate(readColumn(row, ['data', 'date', 'created_at', 'data da venda', 'data compra', 'created']));
+  return parseDate(readSmartColumn(row, {
+    aliases: ['data', 'date', 'created_at', 'data da venda', 'data compra', 'created', 'data pedido', 'data de compra'],
+    includes: ['data', 'date', 'created'],
+    excludes: ['nascimento', 'birth'],
+  }));
 }
 
 function readAmount(row: Record<string, string>) {
-  return parseMoney(readColumn(row, ['valor', 'receita', 'faturamento', 'valor líquido', 'valor liquido', 'total', 'amount', 'price']));
+  return parseMoney(readSmartColumn(row, {
+    aliases: ['valor', 'receita', 'faturamento', 'valor líquido', 'valor liquido', 'total', 'amount', 'price', 'preço', 'preco'],
+    includes: ['valor', 'receita', 'faturamento', 'total', 'amount', 'price', 'preco', 'preço'],
+    excludes: ['id', 'codigo', 'código'],
+  }));
 }
 
-function readColumn(row: Record<string, string>, options: string[]) {
-  const keys = options.map(normalizeHeader);
-  const key = keys.find((item) => row[item] !== undefined && String(row[item]).trim());
-  return key ? String(row[key]).trim() : '';
+function buildUsefulFields(row: Record<string, string>) {
+  const fields = [
+    ['Documento', readDocument(row)],
+    ['Localização', readLocation(row)],
+    ['Pagamento', readPaymentMethod(row)],
+    ['Status', readStatus(row)],
+    ['Origem', readSource(row)],
+    ['Campanha', readCampaign(row)],
+  ];
+  const detected = Object.entries(row)
+    .filter(([key, value]) => value.trim() && /utm|cupom|checkout|transa|pedido|assinatura|afiliado|src|sck|fbclid|gclid/.test(key))
+    .slice(0, 6)
+    .map(([key, value]) => [toTitle(key), value] as [string, string]);
+  return [...fields, ...detected]
+    .filter(([, value], index, list) => value && list.findIndex(([, item]) => item === value) === index)
+    .map(([label, value]) => ({ label, value }));
+}
+
+function readSmartColumn(row: Record<string, string>, config: { aliases?: string[]; includes?: string[]; excludes?: string[] }) {
+  const aliases = (config.aliases ?? []).map(normalizeHeader);
+  const includes = (config.includes ?? []).map(normalizeHeader);
+  const excludes = (config.excludes ?? []).map(normalizeHeader);
+  const keys = Object.keys(row);
+
+  const exact = aliases.find((alias) => row[alias] !== undefined && String(row[alias]).trim());
+  if (exact) return String(row[exact]).trim();
+
+  const candidate = keys.find((key) => {
+    if (!String(row[key]).trim()) return false;
+    if (excludes.some((term) => key.includes(term))) return false;
+    return includes.some((term) => key === term || key.includes(term) || term.includes(key));
+  });
+  return candidate ? String(row[candidate]).trim() : '';
+}
+
+function toTitle(value: string) {
+  return value.split(/[_\s-]+/).filter(Boolean).map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`).join(' ');
 }
 
 function inferIntent(row: Record<string, string>) {

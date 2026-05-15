@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { AlertTriangle, ArrowUpRight, Calculator, CalendarDays, RefreshCw, Rocket, Target, TrendingUp, Wallet } from 'lucide-react';
+import { AlertTriangle, ArrowUpRight, Calculator, CalendarDays, Plus, RefreshCw, Rocket, Signal, Target, TrendingUp, Wallet } from 'lucide-react';
 import { type SalesRevenuePoint, type TrafficSpendPoint } from '../lib/finance';
 import { defaultIntegrationSettings, loadSheetData, subscribeIntegrationSettings } from '../lib/integrations';
 import { cn } from '../lib/utils';
 
 const money = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const number = new Intl.NumberFormat('pt-BR');
-const inputClass = 'h-10 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 font-mono text-[13px] text-slate-100 outline-none focus:ring-1 focus:ring-blue-600';
+const inputClass = 'h-10 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 font-mono text-[13px] text-slate-100 outline-none focus:ring-1 focus:ring-red-600';
+const compactInputClass = 'h-9 rounded-lg border border-slate-800 bg-slate-950 px-3 font-mono text-[12px] text-slate-100 outline-none focus:ring-1 focus:ring-red-600';
 
 type LoadStatus = 'loading' | 'ready' | 'error';
 
@@ -16,12 +16,34 @@ export function Launches() {
   const [traffic, setTraffic] = useState<TrafficSpendPoint[]>([]);
   const [status, setStatus] = useState<LoadStatus>('loading');
   const [sheetMessage, setSheetMessage] = useState('Carregando dados do lançamento...');
-  const [leads, setLeads] = useState(0);
-  const [showRate, setShowRate] = useState(35);
-  const [closeRate, setCloseRate] = useState(8);
-  const [ticket, setTicket] = useState(0);
-  const [extraSpend, setExtraSpend] = useState(0);
-  const [targetCpa, setTargetCpa] = useState(180);
+
+  const [targetRevenue, setTargetRevenue] = useState(31000);
+  const [totalInvestment, setTotalInvestment] = useState(50000);
+  const [mainTicket, setMainTicket] = useState(697);
+  const [mainConversion, setMainConversion] = useState(10);
+  const [prepStart, setPrepStart] = useState('2026-05-02');
+  const [salesStart, setSalesStart] = useState('2026-05-02');
+  const [eventDate, setEventDate] = useState('2026-05-09');
+  const [cartClose, setCartClose] = useState('2026-05-10');
+
+  const [trafficPct, setTrafficPct] = useState(95);
+  const [apiPct, setApiPct] = useState(5);
+  const [smsPct, setSmsPct] = useState(0);
+  const [salesTrafficPct, setSalesTrafficPct] = useState(100);
+  const [distributionPct, setDistributionPct] = useState(0);
+  const [remarketingPct, setRemarketingPct] = useState(0);
+  const [reminderPct, setReminderPct] = useState(0);
+  const [infoPct, setInfoPct] = useState(0);
+
+  const [lotPrice, setLotPrice] = useState(31);
+  const [lotQuantity, setLotQuantity] = useState(1000);
+  const [trafficChannelPct, setTrafficChannelPct] = useState(100);
+  const [contentChannelPct, setContentChannelPct] = useState(0);
+  const [baseChannelPct, setBaseChannelPct] = useState(0);
+
+  const [cpm, setCpm] = useState(53);
+  const [ctr, setCtr] = useState(3.6);
+  const [pageConversion, setPageConversion] = useState(75);
 
   useEffect(() => {
     return subscribeIntegrationSettings(
@@ -57,103 +79,160 @@ export function Launches() {
   const currentRevenue = sum(cycleRevenue.map((item) => item.revenue));
   const currentOrders = sum(cycleRevenue.map((item) => item.orders));
   const currentSpend = sum(cycleTraffic.map((item) => item.spend));
-  const currentTicket = currentRevenue / Math.max(currentOrders, 1);
   const currentRoas = currentSpend ? currentRevenue / currentSpend : 0;
   const currentCpa = currentOrders ? currentSpend / currentOrders : 0;
 
-  useEffect(() => {
-    if (!ticket && currentTicket > 0) setTicket(round(currentTicket));
-  }, [currentTicket, ticket]);
-
-  const projectedShowups = leads * (showRate / 100);
-  const projectedSales = projectedShowups * (closeRate / 100);
-  const projectedRevenue = projectedSales * ticket;
-  const projectedSpend = currentSpend + extraSpend;
-  const projectedCpa = projectedSales ? projectedSpend / projectedSales : 0;
-  const projectedRoas = projectedSpend ? projectedRevenue / projectedSpend : 0;
-  const breakEvenSales = ticket ? projectedSpend / ticket : 0;
-  const spendRoom = Math.max(0, (projectedSales * targetCpa) - currentSpend);
-  const flow = useMemo(() => mergeDailyFlow(cycleRevenue, cycleTraffic), [cycleRevenue, cycleTraffic]);
+  const lotRevenue = lotPrice * lotQuantity;
+  const totalTickets = lotQuantity;
+  const averageLotTicket = totalTickets ? lotRevenue / totalTickets : 0;
+  const mainSales = Math.round(totalTickets * (mainConversion / 100));
+  const projectedMainRevenue = mainSales * mainTicket;
+  const targetRoas = totalInvestment ? targetRevenue / totalInvestment : 0;
+  const trafficBudget = totalInvestment * (trafficPct / 100);
+  const apiBudget = totalInvestment * (apiPct / 100);
+  const smsBudget = totalInvestment * (smsPct / 100);
+  const budgetSum = trafficPct + apiPct + smsPct;
+  const trafficSplitSum = salesTrafficPct + distributionPct + remarketingPct + reminderPct + infoPct;
+  const salesBudget = trafficBudget * (salesTrafficPct / 100);
+  const distributionBudget = trafficBudget * (distributionPct / 100);
+  const remarketingBudget = trafficBudget * (remarketingPct / 100);
+  const reminderBudget = trafficBudget * (reminderPct / 100);
+  const infoBudget = trafficBudget * (infoPct / 100);
+  const trafficTickets = Math.round(totalTickets * (trafficChannelPct / 100));
+  const contentTickets = Math.round(totalTickets * (contentChannelPct / 100));
+  const baseTickets = Math.round(totalTickets * (baseChannelPct / 100));
+  const channelSum = trafficChannelPct + contentChannelPct + baseChannelPct;
+  const plannedCacTraffic = trafficTickets ? salesBudget / trafficTickets : 0;
+  const plannedCacGlobal = totalTickets ? trafficBudget / totalTickets : 0;
+  const salesDays = Math.max(1, daysBetween(salesStart, cartClose));
+  const salesPerDay = Math.ceil(totalTickets / salesDays);
+  const cpc = ctr ? cpm / (1000 * (ctr / 100)) : 0;
+  const costPerPageView = pageConversion ? cpc / (pageConversion / 100) : 0;
+  const simulatedCac = (pageConversion && mainConversion) ? cpc / (pageConversion / 100) / (mainConversion / 100) : 0;
 
   return (
     <div className="mx-auto max-w-[1500px] space-y-6 p-10 text-slate-300">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-blue-400">Projeção de lançamento</p>
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-red-400">Planejamento</p>
           <h1 className="mt-2 text-xl font-display font-bold tracking-tight text-slate-100">Lançamentos</h1>
-          <p className="mt-1 max-w-2xl text-[12px] leading-5 text-slate-500">Ciclo do Workshop Bússola da Cura até a oferta do Éden, com projeção recalculada conforme as métricas de conversão.</p>
+          <p className="mt-1 max-w-2xl text-[12px] leading-5 text-slate-500">Configure a estrutura financeira, orçamento, lotes e simulação de CAC do lançamento.</p>
         </div>
         <div className="flex flex-col items-start gap-2 xl:items-end">
           <StatusBanner status={status} message={sheetMessage} />
           <div className="flex items-center gap-2 rounded-lg border border-slate-900 bg-slate-950 px-3 py-2 text-[11px] text-slate-500">
-            <CalendarDays size={13} className="text-blue-400" />
-            {formatDate(cycleStart)} até {formatDate(cycleEnd)}
+            <CalendarDays size={13} className="text-red-400" />
+            Dados reais: {formatDate(cycleStart)} até {formatDate(cycleEnd)}
           </div>
         </div>
       </div>
 
       {status === 'error' && (
         <section className="rounded-2xl border border-amber-500/15 bg-amber-500/[0.04] p-4 text-[12px] leading-5 text-amber-100">
-          <div className="flex gap-3"><AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber-300" /><div><p className="font-semibold">As planilhas ainda não estão públicas para leitura CSV.</p><p className="mt-1 text-amber-200/80">A projeção continua funcionando com os campos manuais, mas os dados reais do ciclo ficam zerados até liberar o acesso.</p></div></div>
+          <div className="flex gap-3"><AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber-300" /><div><p className="font-semibold">As planilhas ainda não estão públicas para leitura CSV.</p><p className="mt-1 text-amber-200/80">O planejamento continua funcionando, mas os cards de dados reais ficam zerados até liberar o acesso.</p></div></div>
         </section>
       )}
 
-      <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <MetricCard label="Tráfego do ciclo" value={money.format(currentSpend)} detail={`${number.format(cycleTraffic.length)} registro(s)`} icon={Rocket} tone="amber" />
-        <MetricCard label="Vendas Éden" value={number.format(currentOrders)} detail={money.format(currentRevenue)} icon={TrendingUp} tone="green" positive />
-        <MetricCard label="ROAS atual" value={currentRoas.toFixed(2).replace('.', ',')} detail="Faturamento / tráfego" icon={Target} tone={currentRoas >= 1 ? 'green' : 'rose'} positive={currentRoas >= 1} />
-        <MetricCard label="Ticket atual" value={money.format(currentTicket)} detail="Média real do ciclo" icon={Wallet} tone="blue" positive />
-        <MetricCard label="CPA atual" value={money.format(currentCpa)} detail="Custo por venda" icon={Calculator} tone={currentCpa ? 'blue' : 'rose'} positive={Boolean(currentCpa)} />
-      </section>
+      <Panel title="Configuração do lançamento" description="Base financeira e datas principais da campanha." icon={<Rocket size={15} />} action="Referência">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <NumberField label="Faturamento alvo" value={targetRevenue} onChange={setTargetRevenue} prefix="R$" />
+          <NumberField label="Investimento total" value={totalInvestment} onChange={setTotalInvestment} prefix="R$" />
+          <NumberField label="Ticket produto principal" value={mainTicket} onChange={setMainTicket} prefix="R$" />
+          <NumberField label="Conversão produto" value={mainConversion} onChange={setMainConversion} suffix="%" />
+          <DateField label="Início preparação" value={prepStart} onChange={setPrepStart} />
+          <DateField label="Início vendas" value={salesStart} onChange={setSalesStart} />
+          <DateField label="Data do evento" value={eventDate} onChange={setEventDate} />
+          <DateField label="Fechamento carrinho" value={cartClose} onChange={setCartClose} />
+        </div>
+        <p className="mt-4 text-[11px] text-slate-600"><CalendarDays size={12} className="mr-1 inline" />Datas editáveis para simular a cadência do lançamento.</p>
+        <div className="mt-5 grid grid-cols-1 gap-3 border-t border-slate-900 pt-5 md:grid-cols-3">
+          <ResultCard label="ROAS alvo" value={`${targetRoas.toFixed(1).replace('.', ',')}x`} />
+          <ResultCard label="Total ingressos" value={number.format(totalTickets)} />
+          <ResultCard label="Vendas produto principal" value={number.format(mainSales)} />
+        </div>
+      </Panel>
+
+      <Panel title="Dados reais do ciclo" description="Leitura do último sábado até hoje usando as planilhas conectadas." icon={<Signal size={15} />}>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <MetricCard label="Tráfego" value={money.format(currentSpend)} detail={`${number.format(cycleTraffic.length)} registro(s)`} tone="amber" />
+          <MetricCard label="Vendas" value={number.format(currentOrders)} detail={money.format(currentRevenue)} tone="green" positive />
+          <MetricCard label="ROAS" value={`${currentRoas.toFixed(2).replace('.', ',')}x`} detail="Real do ciclo" tone={currentRoas >= 1 ? 'green' : 'rose'} positive={currentRoas >= 1} />
+          <MetricCard label="CPA" value={money.format(currentCpa)} detail="Real do ciclo" tone={currentCpa ? 'blue' : 'rose'} positive={Boolean(currentCpa)} />
+          <MetricCard label="Diferença" value={money.format(targetRevenue - currentRevenue)} detail="Até o alvo" tone="blue" />
+        </div>
+      </Panel>
+
+      <Panel title="Distribuição de orçamento" description="Defina para onde vai o investimento e como o tráfego será subdividido." icon={<Target size={15} />}>
+        <div className="grid grid-cols-1 gap-8 xl:grid-cols-2">
+          <BudgetGroup title="Investimento total" sum={budgetSum} rows={[
+            { label: 'Tráfego', value: trafficPct, setValue: setTrafficPct, amount: trafficBudget },
+            { label: 'API', value: apiPct, setValue: setApiPct, amount: apiBudget },
+            { label: 'SMS/Ligação', value: smsPct, setValue: setSmsPct, amount: smsBudget },
+          ]} />
+          <BudgetGroup title={`Subdivisão do tráfego (${money.format(trafficBudget)})`} sum={trafficSplitSum} rows={[
+            { label: 'Vendas', value: salesTrafficPct, setValue: setSalesTrafficPct, amount: salesBudget },
+            { label: 'Distribuição', value: distributionPct, setValue: setDistributionPct, amount: distributionBudget },
+            { label: 'Remarketing', value: remarketingPct, setValue: setRemarketingPct, amount: remarketingBudget },
+            { label: 'Lembrete', value: reminderPct, setValue: setReminderPct, amount: reminderBudget },
+            { label: 'Informações', value: infoPct, setValue: setInfoPct, amount: infoBudget },
+          ]} />
+        </div>
+      </Panel>
+
+      <Panel title="Lotes de preço" description="Simule os ingressos do workshop e o faturamento inicial." icon={<Wallet size={15} />} action="Adicionar lote">
+        <div className="grid grid-cols-[56px_1fr_1fr_1fr_1fr] gap-3 border-b border-slate-900 pb-2 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+          <span>Lote</span><span>Valor (R$)</span><span>Qtd</span><span>% do total</span><span>Faturamento</span>
+        </div>
+        <div className="grid grid-cols-[56px_1fr_1fr_1fr_1fr] items-center gap-3 py-3 text-[12px] text-slate-400">
+          <span className="font-mono text-slate-500">#1</span>
+          <input className={compactInputClass} type="number" min="0" value={lotPrice} onChange={(event) => setLotPrice(Number(event.target.value) || 0)} />
+          <input className={compactInputClass} type="number" min="0" value={lotQuantity} onChange={(event) => setLotQuantity(Number(event.target.value) || 0)} />
+          <span className="font-mono">100,0%</span>
+          <span className="font-mono font-semibold text-slate-100">{money.format(lotRevenue)}</span>
+        </div>
+        <div className="mt-3 grid grid-cols-1 gap-3 border-t border-slate-900 pt-4 md:grid-cols-3">
+          <ResultCard label="Total ingressos" value={number.format(totalTickets)} />
+          <ResultCard label="Faturamento lotes" value={money.format(lotRevenue)} />
+          <ResultCard label="Ticket médio" value={money.format(averageLotTicket)} />
+        </div>
+      </Panel>
 
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-        <Panel className="xl:col-span-5" title="Métricas editáveis" description="Altere qualquer campo para recalcular a projeção imediatamente.">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <NumberField label="Leads captados" value={leads} onChange={setLeads} suffix="leads" />
-            <NumberField label="Presença no workshop" value={showRate} onChange={setShowRate} suffix="%" />
-            <NumberField label="Conversão para Éden" value={closeRate} onChange={setCloseRate} suffix="%" />
-            <NumberField label="Ticket projetado" value={ticket} onChange={setTicket} prefix="R$" />
-            <NumberField label="Verba restante" value={extraSpend} onChange={setExtraSpend} prefix="R$" />
-            <NumberField label="CPA limite" value={targetCpa} onChange={setTargetCpa} prefix="R$" />
+        <Panel className="xl:col-span-5" title="Canais de venda + cadência" description="Distribuição de vendas esperadas por origem." icon={<TrendingUp size={15} />} action="Canal">
+          <div className="space-y-3">
+            <ChannelRow label="Tráfego" value={trafficChannelPct} onChange={setTrafficChannelPct} amount={trafficTickets} />
+            <ChannelRow label="Conteúdo" value={contentChannelPct} onChange={setContentChannelPct} amount={contentTickets} />
+            <ChannelRow label="Base" value={baseChannelPct} onChange={setBaseChannelPct} amount={baseTickets} />
           </div>
+          <div className="mt-5 rounded-lg border border-slate-900 bg-slate-950/70 px-3 py-2 text-[11px] text-slate-500">Soma dos canais: <span className={cn('font-mono font-bold', channelSum === 100 ? 'text-emerald-400' : 'text-amber-300')}>{channelSum.toFixed(1)}%</span></div>
         </Panel>
 
-        <Panel className="xl:col-span-7" title="Projeção do lançamento" description="Resultado final estimado com base na captação e nas conversões informadas.">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-            <ProjectionTile label="Presentes estimados" value={number.format(Math.round(projectedShowups))} detail={`${showRate}% dos leads`} />
-            <ProjectionTile label="Vendas projetadas" value={number.format(Math.round(projectedSales))} detail={`${closeRate}% dos presentes`} />
-            <ProjectionTile label="Faturamento projetado" value={money.format(projectedRevenue)} detail={`Ticket ${money.format(ticket)}`} strong />
-            <ProjectionTile label="ROAS projetado" value={projectedRoas.toFixed(2).replace('.', ',')} detail={money.format(projectedSpend)} />
-            <ProjectionTile label="CPA projetado" value={money.format(projectedCpa)} detail={`${number.format(Math.ceil(breakEvenSales))} venda(s) para pagar mídia`} />
-            <ProjectionTile label="Margem para escalar" value={money.format(spendRoom)} detail={`CPA alvo ${money.format(targetCpa)}`} strong={spendRoom > 0} />
+        <Panel className="xl:col-span-7" title="CAC do planejamento" description="Quanto cada venda custa com a distribuição planejada." icon={<Calculator size={15} />}>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <BigResult label="CAC tráfego" value={money.format(plannedCacTraffic)} detail={`${money.format(salesBudget)} / ${number.format(trafficTickets)} venda(s)`} />
+            <BigResult label="CAC global" value={money.format(plannedCacGlobal)} detail={`${money.format(trafficBudget)} / ${number.format(totalTickets)} venda(s)`} />
+            <ResultCard label="Dias de venda" value={number.format(salesDays)} />
+            <ResultCard label="Vendas/dia" value={number.format(salesPerDay)} />
           </div>
         </Panel>
       </section>
 
-      <section className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-        <Panel className="xl:col-span-8" title="Ritmo do ciclo" description="Faturamento e tráfego entre o último sábado e hoje.">
-          <div className="h-[320px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={flow}>
-                <defs><linearGradient id="launchRevenue" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#22c55e" stopOpacity={0.16}/><stop offset="95%" stopColor="#22c55e" stopOpacity={0}/></linearGradient><linearGradient id="launchSpend" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#f59e0b" stopOpacity={0.14}/><stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/></linearGradient></defs>
-                <CartesianGrid stroke="#0f172a" vertical={false} />
-                <XAxis dataKey="name" stroke="#334155" fontSize={10} tickLine={false} axisLine={false} />
-                <YAxis hide />
-                <Tooltip contentStyle={{ backgroundColor: '#020617', border: '1px solid #1e293b', borderRadius: '8px', fontSize: '11px' }} formatter={(value) => money.format(Number(value))} />
-                <Area type="monotone" dataKey="receita" stroke="#22c55e" strokeWidth={2} fill="url(#launchRevenue)" />
-                <Area type="monotone" dataKey="midia" stroke="#f59e0b" strokeWidth={2} fill="url(#launchSpend)" />
-              </AreaChart>
-            </ResponsiveContainer>
+      <Panel title="Simulação de CAC" description="Parâmetros de funil para entender o custo provável antes de escalar." icon={<ArrowUpRight size={15} />} action="Referência">
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+          <div className="space-y-5">
+            <SliderField label="CPM" value={cpm} onChange={setCpm} min={5} max={200} prefix="R$" />
+            <SliderField label="CTR" value={ctr} onChange={setCtr} min={0.1} max={8} suffix="%" step={0.1} />
+            <SliderField label="Conversão página" value={pageConversion} onChange={setPageConversion} min={1} max={100} suffix="%" />
           </div>
-        </Panel>
-        <Panel className="xl:col-span-4" title="Leitura rápida" description="Como usar essa projeção no dia a dia.">
-          <div className="space-y-3 text-[12px] leading-5 text-slate-500">
-            <Insight title="Até onde escalar" text="Use a margem para escalar como teto de verba mantendo o CPA limite informado." />
-            <Insight title="Live do sábado" text="Presença e conversão controlam o tamanho da oferta do Éden. Pequenas mudanças nesses campos mudam o resultado final." />
-            <Insight title="Próximo workshop" text="Leads captados representam a semana de captação do Workshop Bússola da Cura, mesmo enquanto o sábado atual vende Éden." />
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <BigResult className="md:col-span-2" label="CAC simulado" value={money.format(simulatedCac)} detail="CPC / conversão página / conversão produto" />
+            <ResultCard label="CPC" value={money.format(cpc)} />
+            <ResultCard label="Custo/PV" value={money.format(costPerPageView)} />
+            <ResultCard label="Vendas principais" value={number.format(mainSales)} />
+            <ResultCard label="Receita produto" value={money.format(projectedMainRevenue)} />
           </div>
-        </Panel>
-      </section>
+        </div>
+      </Panel>
     </div>
   );
 }
@@ -163,38 +242,41 @@ function StatusBanner({ status, message }: { status: LoadStatus; message: string
   return <div className={cn('max-w-xl rounded-lg border px-3 py-2 text-[11px] font-semibold leading-5', tone)}>{status === 'loading' && <RefreshCw size={12} className="mr-2 inline animate-spin" />}{message}</div>;
 }
 
-function Panel({ title, description, className, children }: { title: string; description: string; className?: string; children: ReactNode }) {
-  return <section className={cn('rounded-2xl border border-slate-900/50 bg-slate-950 p-5', className)}><div className="mb-5"><h2 className="text-sm font-semibold text-slate-200">{title}</h2><p className="mt-1 text-[11px] text-slate-500">{description}</p></div>{children}</section>;
-}
-
-function MetricCard({ label, value, detail, icon: Icon, tone, positive }: { label: string; value: string; detail: string; icon: typeof Rocket; tone: 'blue' | 'green' | 'amber' | 'rose'; positive?: boolean }) {
-  const tones = { blue: 'text-blue-400', green: 'text-emerald-400', amber: 'text-amber-300', rose: 'text-rose-300' };
-  return <div className="rounded-xl border border-slate-900/80 bg-slate-950 p-4"><div className="flex items-start justify-between gap-4"><div><p className="text-[11px] font-medium uppercase tracking-widest text-slate-500">{label}</p><p className="mt-2 font-mono text-lg font-bold tracking-tighter text-slate-100">{value}</p></div><div className={cn('flex h-8 w-8 items-center justify-center rounded-lg border border-slate-800 bg-slate-900/50', tones[tone])}><Icon size={15} /></div></div><p className={cn('mt-2 inline-flex items-center gap-1 text-[11px]', positive ? 'text-emerald-400' : 'text-slate-600')}>{positive ? <ArrowUpRight size={11} /> : null}{detail}</p></div>;
+function Panel({ title, description, icon, action, className, children }: { title: string; description: string; icon: ReactNode; action?: string; className?: string; children: ReactNode }) {
+  return <section className={cn('rounded-2xl border border-slate-900/60 bg-slate-950 p-5', className)}><div className="mb-5 flex items-start justify-between gap-3"><div><h2 className="flex items-center gap-2 text-sm font-semibold text-slate-100"><span className="text-red-400">{icon}</span>{title}</h2><p className="mt-1 text-[11px] text-slate-500">{description}</p></div>{action && <button className="inline-flex items-center gap-1 rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-1.5 text-[11px] font-semibold text-slate-300"><Plus size={12} />{action}</button>}</div>{children}</section>;
 }
 
 function NumberField({ label, value, onChange, prefix, suffix }: { label: string; value: number; onChange: (value: number) => void; prefix?: string; suffix?: string }) {
   return <label className="space-y-2"><span className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">{label}</span><div className="relative">{prefix && <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[11px] text-slate-600">{prefix}</span>}<input className={cn(inputClass, prefix ? 'pl-9' : '', suffix ? 'pr-12' : '')} type="number" min="0" value={value} onChange={(event) => onChange(Number(event.target.value) || 0)} />{suffix && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-slate-600">{suffix}</span>}</div></label>;
 }
 
-function ProjectionTile({ label, value, detail, strong }: { label: string; value: string; detail: string; strong?: boolean }) {
-  return <div className={cn('rounded-xl border p-4', strong ? 'border-blue-500/20 bg-blue-500/[0.06]' : 'border-slate-900 bg-slate-950/70')}><p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">{label}</p><p className="mt-2 font-mono text-lg font-bold text-slate-100">{value}</p><p className="mt-1 text-[11px] text-slate-600">{detail}</p></div>;
+function DateField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  return <label className="space-y-2"><span className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">{label}</span><input className={inputClass} type="date" value={value} onChange={(event) => onChange(event.target.value)} /></label>;
 }
 
-function Insight({ title, text }: { title: string; text: string }) {
-  return <div className="rounded-lg border border-slate-900 bg-slate-950/70 p-3"><p className="font-semibold text-slate-300">{title}</p><p className="mt-1">{text}</p></div>;
+function ResultCard({ label, value }: { label: string; value: string }) {
+  return <div className="rounded-xl border border-slate-900 bg-slate-900/60 p-4 text-center"><p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">{label}</p><p className="mt-1 font-mono text-lg font-bold text-slate-100">{value}</p></div>;
 }
 
-function mergeDailyFlow(revenue: SalesRevenuePoint[], traffic: TrafficSpendPoint[]) {
-  const groups: Record<string, { name: string; receita: number; midia: number }> = {};
-  revenue.forEach((item) => {
-    groups[item.date] = groups[item.date] ?? { name: item.label, receita: 0, midia: 0 };
-    groups[item.date].receita += item.revenue;
-  });
-  traffic.forEach((item) => {
-    groups[item.date] = groups[item.date] ?? { name: item.label, receita: 0, midia: 0 };
-    groups[item.date].midia += item.spend;
-  });
-  return Object.entries(groups).sort(([first], [second]) => first.localeCompare(second)).map(([, value]) => value);
+function BigResult({ label, value, detail, className }: { label: string; value: string; detail: string; className?: string }) {
+  return <div className={cn('rounded-xl border border-slate-800 bg-slate-950/60 p-5 text-center', className)}><p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">{label}</p><p className="mt-1 font-mono text-2xl font-bold text-slate-100">{value}</p><p className="mt-1 text-[11px] text-slate-600">{detail}</p></div>;
+}
+
+function MetricCard({ label, value, detail, tone, positive }: { label: string; value: string; detail: string; tone: 'blue' | 'green' | 'amber' | 'rose'; positive?: boolean }) {
+  const tones = { blue: 'text-blue-400', green: 'text-emerald-400', amber: 'text-amber-300', rose: 'text-rose-300' };
+  return <div className="rounded-xl border border-slate-900/80 bg-slate-950 p-4"><p className="text-[11px] font-medium uppercase tracking-widest text-slate-500">{label}</p><p className={cn('mt-2 font-mono text-lg font-bold tracking-tighter', tones[tone])}>{value}</p><p className={cn('mt-2 inline-flex items-center gap-1 text-[11px]', positive ? 'text-emerald-400' : 'text-slate-600')}>{positive ? <ArrowUpRight size={11} /> : null}{detail}</p></div>;
+}
+
+function BudgetGroup({ title, sum, rows }: { title: string; sum: number; rows: { label: string; value: number; setValue: (value: number) => void; amount: number }[] }) {
+  return <div><div className="mb-4 flex items-center justify-between gap-3"><p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">{title}</p><span className={cn('rounded-lg px-2 py-1 font-mono text-[11px] font-bold', sum === 100 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-300')}>Soma: {sum.toFixed(1)}%</span></div><div className="space-y-3">{rows.map((row) => <div key={row.label} className="grid grid-cols-[90px_76px_1fr] items-center gap-3 text-[12px]"><span className="text-slate-400">{row.label}</span><div className="relative"><input className={cn(compactInputClass, 'w-full pr-7')} type="number" min="0" value={row.value} onChange={(event) => row.setValue(Number(event.target.value) || 0)} /><span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-600">%</span></div><span className="font-mono text-slate-500">{money.format(row.amount)}</span></div>)}</div></div>;
+}
+
+function ChannelRow({ label, value, onChange, amount }: { label: string; value: number; onChange: (value: number) => void; amount: number }) {
+  return <div className="grid grid-cols-[80px_80px_1fr] items-center gap-3 text-[12px]"><span className="text-slate-400">{label}</span><div className="relative"><input className={cn(compactInputClass, 'w-full pr-7')} type="number" min="0" value={value} onChange={(event) => onChange(Number(event.target.value) || 0)} /><span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-600">%</span></div><span className="font-mono text-slate-500">{number.format(amount)} vendas</span></div>;
+}
+
+function SliderField({ label, value, onChange, min, max, step = 1, prefix, suffix }: { label: string; value: number; onChange: (value: number) => void; min: number; max: number; step?: number; prefix?: string; suffix?: string }) {
+  return <label className="block"><div className="mb-2 flex items-center justify-between gap-3"><span className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">{label}</span><span className="font-mono text-[12px] font-bold text-slate-100">{prefix}{value}{suffix}</span></div><input className="w-full accent-red-600" type="range" min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value) || 0)} /><div className="mt-1 flex justify-between font-mono text-[10px] text-slate-600"><span>{min}</span><span>{max}</span></div></label>;
 }
 
 function matchesDate(date: string, start: string, end: string) {
@@ -223,10 +305,13 @@ function formatDate(date: string) {
   return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short' }).format(new Date(`${date}T00:00:00`));
 }
 
-function sum(values: number[]) {
-  return values.reduce((total, value) => total + value, 0);
+function daysBetween(start: string, end: string) {
+  const startTime = new Date(`${start}T00:00:00`).getTime();
+  const endTime = new Date(`${end}T00:00:00`).getTime();
+  if (Number.isNaN(startTime) || Number.isNaN(endTime)) return 1;
+  return Math.max(1, Math.ceil((endTime - startTime) / 86400000) + 1);
 }
 
-function round(value: number) {
-  return Math.round(value * 100) / 100;
+function sum(values: number[]) {
+  return values.reduce((total, value) => total + value, 0);
 }

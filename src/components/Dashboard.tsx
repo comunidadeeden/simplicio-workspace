@@ -10,6 +10,7 @@ const money = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL
 const number = new Intl.NumberFormat('pt-BR');
 const COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#38bdf8', '#a78bfa', '#64748b'];
 const inputClass = 'h-9 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 text-[12px] text-slate-300 outline-none focus:ring-1 focus:ring-blue-600 disabled:cursor-not-allowed disabled:opacity-40';
+const defaultDateRange = getCurrentCycleRange();
 
 type LoadStatus = 'loading' | 'ready' | 'error';
 
@@ -20,8 +21,8 @@ export function Dashboard() {
   const [sheetMessage, setSheetMessage] = useState('Carregando planilhas configuradas...');
   const [productFilter, setProductFilter] = useState('Todos');
   const [accountFilter, setAccountFilter] = useState('Todas');
-  const [customStart, setCustomStart] = useState('');
-  const [customEnd, setCustomEnd] = useState('');
+  const [customStart, setCustomStart] = useState(defaultDateRange.start);
+  const [customEnd, setCustomEnd] = useState(defaultDateRange.end);
   const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
@@ -265,7 +266,32 @@ function matchesDate(date: string, start: string, end: string) {
 
 function describeRange(start: string, end: string) {
   if (!start && !end) return 'Sem recorte de data';
-  return `${start ? formatDate(start) : 'Início'} - ${end ? formatDate(end) : 'Hoje'}`;
+  const currentCycle = getCurrentCycleRange();
+  const label = start === currentCycle.start && end === currentCycle.end ? 'Ciclo Atual: ' : '';
+  return `${label}${start ? formatDate(start) : 'Início'} - ${end ? formatDate(end) : 'Hoje'}`;
+}
+
+function getCurrentCycleRange() {
+  const end = startOfDay(new Date());
+  return { start: toIso(lastSaturday(end)), end: toIso(end) };
+}
+
+function lastSaturday(date: Date) {
+  const next = new Date(date);
+  const day = next.getDay();
+  const diff = (day + 1) % 7;
+  next.setDate(next.getDate() - diff);
+  return startOfDay(next);
+}
+
+function startOfDay(date: Date) {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
+
+function toIso(date: Date) {
+  return date.toISOString().slice(0, 10);
 }
 
 function unique(values: string[]) {

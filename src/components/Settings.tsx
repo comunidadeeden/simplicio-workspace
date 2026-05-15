@@ -20,6 +20,7 @@ import {
 import {
   defaultIntegrationSettings,
   defaultSalesSource,
+  inspectSheetConnection,
   loadSheetData,
   saveIntegrationSettings,
   subscribeIntegrationSettings,
@@ -69,9 +70,9 @@ const emptyAdAccount: AdAccountConfig = {
   spreadsheetUrl: '',
   sheetName: 'Página 1',
   gid: '0',
-  dateColumn: 'data',
-  spendColumn: 'valor gasto',
-  campaignColumn: 'campanha',
+  dateColumn: 'Day',
+  spendColumn: 'Amount Spent',
+  campaignColumn: 'Campaign Name',
   status: 'Ativa',
 };
 
@@ -85,10 +86,57 @@ export function Settings() {
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [testState, setTestState] = useState<'idle' | 'testing'>('idle');
   const [testMessage, setTestMessage] = useState('Escolha um tipo de conexão para configurar as fontes de dados da aplicação.');
+  const [inspectState, setInspectState] = useState<'idle' | 'checking' | 'ready' | 'error'>('idle');
+  const [inspectMessage, setInspectMessage] = useState('Cole a URL da planilha para detectar as colunas automaticamente.');
+  const [detectedColumns, setDetectedColumns] = useState<string[]>([]);
 
   useEffect(() => {
     return subscribeIntegrationSettings(setSettings, () => setSettings(defaultIntegrationSettings));
   }, []);
+
+
+  useEffect(() => {
+    const isSales = modalMode === 'sales';
+    const isAds = modalMode === 'ads';
+    if (!isSales && !isAds) {
+      setInspectState('idle');
+      setDetectedColumns([]);
+      return;
+    }
+
+    const draft = isSales ? salesDraft : adDraft;
+    if (!draft.spreadsheetUrl.trim()) {
+      setInspectState('idle');
+      setDetectedColumns([]);
+      setInspectMessage('Cole a URL da planilha para detectar as colunas automaticamente.');
+      return;
+    }
+
+    setInspectState('checking');
+    setInspectMessage('Verificando planilha e lendo cabeçalhos...');
+    const timeout = window.setTimeout(() => {
+      void inspectSheetConnection(isSales ? 'sales' : 'ads', draft.spreadsheetUrl, draft.gid).then((preview) => {
+        setDetectedColumns(preview.columns);
+        setInspectState('ready');
+        setInspectMessage(`${preview.columns.length} colunas detectadas em ${preview.rowCount} linhas.`);
+        if (isSales) {
+          setSalesDraft((current) => current.spreadsheetUrl === draft.spreadsheetUrl && current.gid === draft.gid
+            ? { ...current, ...pickDetected(preview.detected) }
+            : current);
+        } else {
+          setAdDraft((current) => current.spreadsheetUrl === draft.spreadsheetUrl && current.gid === draft.gid
+            ? { ...current, ...pickDetected(preview.detected) }
+            : current);
+        }
+      }).catch((error) => {
+        setDetectedColumns([]);
+        setInspectState('error');
+        setInspectMessage(error instanceof Error ? error.message : 'Não foi possível verificar essa planilha.');
+      });
+    }, 700);
+
+    return () => window.clearTimeout(timeout);
+  }, [adDraft.gid, adDraft.spreadsheetUrl, modalMode, salesDraft.gid, salesDraft.spreadsheetUrl]);
 
   const connections = useMemo<ConnectionItem[]>(() => {
     const sales = settings.salesSources.map((source): ConnectionItem => ({
@@ -283,8 +331,8 @@ export function Settings() {
       {modalMode && (
         <ConnectionModal title={getModalTitle(modalMode, editingId)} onClose={closeModal}>
           {modalMode === 'select' && <ConnectionTypePicker onSelect={openType} />}
-          {modalMode === 'sales' && <SalesForm draft={salesDraft} onChange={setSalesDraft} />}
-          {modalMode === 'ads' && <AdForm draft={adDraft} onChange={setAdDraft} />}
+          {modalMode === 'sales' && <SalesForm draft={salesDraft} onChange={setSalesDraft} inspectState={inspectState} inspectMessage={inspectMessage} columns={detectedColumns} />}
+          {modalMode === 'ads' && <AdForm draft={adDraft} onChange={setAdDraft} inspectState={inspectState} inspectMessage={inspectMessage} columns={detectedColumns} />}
           {modalMode === 'webhook' && <WebhookForm draft={webhookDraft} onChange={setWebhookDraft} />}
           {modalMode !== 'select' && <ModalActions onClose={closeModal} onSave={saveDraft} disabled={!canSave(modalMode, salesDraft, adDraft, webhookDraft)} />}
         </ConnectionModal>
@@ -302,12 +350,23 @@ function ConnectionTypePicker({ onSelect }: { onSelect: (type: ConnectionType) =
   return <div className="grid grid-cols-1 gap-3 md:grid-cols-3">{items.map((item) => { const Icon = item.icon; return <button key={item.type} onClick={() => onSelect(item.type)} className="rounded-xl border border-slate-900 bg-slate-950 p-4 text-left transition-colors hover:border-blue-500/40"><div className="mb-4 flex h-9 w-9 items-center justify-center rounded-lg border border-slate-800 bg-slate-900/50 text-blue-400"><Icon size={16} /></div><p className="text-sm font-semibold text-slate-200">{item.title}</p><p className="mt-2 text-[11px] leading-5 text-slate-500">{item.description}</p></button>; })}</div>;
 }
 
-function SalesForm({ draft, onChange }: { draft: SalesSheetConfig; onChange: (draft: SalesSheetConfig) => void }) {
-  return <div className="space-y-4"><div className="grid grid-cols-1 gap-4 md:grid-cols-3"><Field label="Nome da fonte"><input className={inputClass} value={draft.platform} onChange={(event) => onChange({ ...draft, platform: event.target.value })} /></Field><Field label="Aba"><input className={inputClass} value={draft.sheetName} onChange={(event) => onChange({ ...draft, sheetName: event.target.value })} /></Field><Field label="GID"><input className={inputClass} value={draft.gid} onChange={(event) => onChange({ ...draft, gid: event.target.value })} /></Field><Field label="Coluna data"><input className={inputClass} value={draft.dateColumn} onChange={(event) => onChange({ ...draft, dateColumn: event.target.value })} /></Field><Field label="Coluna receita"><input className={inputClass} value={draft.revenueColumn} onChange={(event) => onChange({ ...draft, revenueColumn: event.target.value })} /></Field><Field label="Coluna pedido"><input className={inputClass} value={draft.orderColumn} onChange={(event) => onChange({ ...draft, orderColumn: event.target.value })} placeholder="opcional" /></Field><Field label="Coluna produto"><input className={inputClass} value={draft.productColumn} onChange={(event) => onChange({ ...draft, productColumn: event.target.value })} /></Field><Field label="Coluna status"><input className={inputClass} value={draft.statusColumn} onChange={(event) => onChange({ ...draft, statusColumn: event.target.value })} /></Field><Field label="Status"><StatusSelect value={draft.status} onChange={(status) => onChange({ ...draft, status })} /></Field></div><Field label="URL da planilha"><UrlField value={draft.spreadsheetUrl} onChange={(value) => onChange({ ...draft, spreadsheetUrl: value })} /></Field><p className="rounded-lg border border-slate-900 bg-slate-950/70 px-3 py-2 font-mono text-[10px] text-slate-500">CSV: {toCsvUrl(draft.spreadsheetUrl, draft.gid)}</p></div>;
+function SalesForm({ draft, onChange, inspectState, inspectMessage, columns }: { draft: SalesSheetConfig; onChange: (draft: SalesSheetConfig) => void; inspectState: InspectState; inspectMessage: string; columns: string[] }) {
+  return <div className="space-y-4"><div className="grid grid-cols-1 gap-4 md:grid-cols-3"><Field label="Nome da fonte"><input className={inputClass} value={draft.platform} onChange={(event) => onChange({ ...draft, platform: event.target.value })} /></Field><Field label="Aba"><input className={inputClass} value={draft.sheetName} onChange={(event) => onChange({ ...draft, sheetName: event.target.value })} /></Field><Field label="GID"><input className={inputClass} value={draft.gid} onChange={(event) => onChange({ ...draft, gid: event.target.value })} /></Field><Field label="Status"><StatusSelect value={draft.status} onChange={(status) => onChange({ ...draft, status })} /></Field></div><Field label="URL da planilha"><UrlField value={draft.spreadsheetUrl} onChange={(value) => onChange({ ...draft, spreadsheetUrl: value })} /></Field><SheetInspection state={inspectState} message={inspectMessage} columns={columns} /><div className="grid grid-cols-1 gap-4 md:grid-cols-3"><Field label="Data detectada"><input className={inputClass} value={draft.dateColumn} onChange={(event) => onChange({ ...draft, dateColumn: event.target.value })} /></Field><Field label="Receita detectada"><input className={inputClass} value={draft.revenueColumn} onChange={(event) => onChange({ ...draft, revenueColumn: event.target.value })} /></Field><Field label="Produto detectado"><input className={inputClass} value={draft.productColumn} onChange={(event) => onChange({ ...draft, productColumn: event.target.value })} /></Field></div><p className="rounded-lg border border-slate-900 bg-slate-950/70 px-3 py-2 font-mono text-[10px] text-slate-500">CSV: {toCsvUrl(draft.spreadsheetUrl, draft.gid)}</p></div>;
 }
 
-function AdForm({ draft, onChange }: { draft: AdAccountConfig; onChange: (draft: AdAccountConfig) => void }) {
-  return <div className="space-y-4"><div className="grid grid-cols-1 gap-4 md:grid-cols-3"><Field label="Nome da conta"><input className={inputClass} value={draft.name} onChange={(event) => onChange({ ...draft, name: event.target.value })} /></Field><Field label="Plataforma"><select className={inputClass} value={draft.platform} onChange={(event) => onChange({ ...draft, platform: event.target.value })}><option>Meta Ads</option><option>Google Ads</option><option>TikTok Ads</option><option>LinkedIn Ads</option></select></Field><Field label="ID da conta"><input className={inputClass} value={draft.accountId} onChange={(event) => onChange({ ...draft, accountId: event.target.value })} /></Field><Field label="Aba"><input className={inputClass} value={draft.sheetName} onChange={(event) => onChange({ ...draft, sheetName: event.target.value })} /></Field><Field label="GID"><input className={inputClass} value={draft.gid} onChange={(event) => onChange({ ...draft, gid: event.target.value })} /></Field><Field label="Status"><StatusSelect value={draft.status} onChange={(status) => onChange({ ...draft, status })} /></Field><Field label="Coluna data"><input className={inputClass} value={draft.dateColumn} onChange={(event) => onChange({ ...draft, dateColumn: event.target.value })} /></Field><Field label="Coluna gasto"><input className={inputClass} value={draft.spendColumn} onChange={(event) => onChange({ ...draft, spendColumn: event.target.value })} /></Field><Field label="Coluna campanha"><input className={inputClass} value={draft.campaignColumn} onChange={(event) => onChange({ ...draft, campaignColumn: event.target.value })} /></Field></div><Field label="URL da planilha"><UrlField value={draft.spreadsheetUrl} onChange={(value) => onChange({ ...draft, spreadsheetUrl: value })} /></Field></div>;
+function AdForm({ draft, onChange, inspectState, inspectMessage, columns }: { draft: AdAccountConfig; onChange: (draft: AdAccountConfig) => void; inspectState: InspectState; inspectMessage: string; columns: string[] }) {
+  return <div className="space-y-4"><div className="grid grid-cols-1 gap-4 md:grid-cols-3"><Field label="Nome da conta"><input className={inputClass} value={draft.name} onChange={(event) => onChange({ ...draft, name: event.target.value })} /></Field><Field label="Plataforma"><select className={inputClass} value={draft.platform} onChange={(event) => onChange({ ...draft, platform: event.target.value })}><option>Meta Ads</option><option>Google Ads</option><option>TikTok Ads</option><option>LinkedIn Ads</option></select></Field><Field label="ID da conta"><input className={inputClass} value={draft.accountId} onChange={(event) => onChange({ ...draft, accountId: event.target.value })} /></Field><Field label="Aba"><input className={inputClass} value={draft.sheetName} onChange={(event) => onChange({ ...draft, sheetName: event.target.value })} /></Field><Field label="GID"><input className={inputClass} value={draft.gid} onChange={(event) => onChange({ ...draft, gid: event.target.value })} /></Field><Field label="Status"><StatusSelect value={draft.status} onChange={(status) => onChange({ ...draft, status })} /></Field></div><Field label="URL da planilha"><UrlField value={draft.spreadsheetUrl} onChange={(value) => onChange({ ...draft, spreadsheetUrl: value })} /></Field><SheetInspection state={inspectState} message={inspectMessage} columns={columns} /><div className="grid grid-cols-1 gap-4 md:grid-cols-3"><Field label="Data detectada"><input className={inputClass} value={draft.dateColumn} onChange={(event) => onChange({ ...draft, dateColumn: event.target.value })} /></Field><Field label="Gasto detectado"><input className={inputClass} value={draft.spendColumn} onChange={(event) => onChange({ ...draft, spendColumn: event.target.value })} /></Field><Field label="Campanha detectada"><input className={inputClass} value={draft.campaignColumn} onChange={(event) => onChange({ ...draft, campaignColumn: event.target.value })} /></Field></div></div>;
+}
+
+
+type InspectState = 'idle' | 'checking' | 'ready' | 'error';
+
+function SheetInspection({ state, message, columns }: { state: InspectState; message: string; columns: string[] }) {
+  return <div className={cn('rounded-xl border px-3 py-3 text-[11px]', state === 'error' ? 'border-rose-500/20 bg-rose-500/10 text-rose-200' : state === 'ready' ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-200' : 'border-slate-800 bg-slate-950/70 text-slate-500')}><div className="flex items-center gap-2"><RefreshCw size={12} className={cn(state === 'checking' && 'animate-spin')} /><span>{message}</span></div>{columns.length > 0 && <div className="mt-3 flex flex-wrap gap-1.5">{columns.slice(0, 18).map((column) => <span key={column} className="rounded border border-slate-800 bg-slate-950 px-2 py-1 font-mono text-[10px] text-slate-400">{column}</span>)}{columns.length > 18 && <span className="rounded border border-slate-800 bg-slate-950 px-2 py-1 font-mono text-[10px] text-slate-500">+{columns.length - 18}</span>}</div>}</div>;
+}
+
+function pickDetected<T extends object>(detected: Partial<T>): Partial<T> {
+  return Object.fromEntries(Object.entries(detected).filter(([, value]) => typeof value !== 'string' || value.trim())) as Partial<T>;
 }
 
 function WebhookForm({ draft, onChange }: { draft: WebhookConfig; onChange: (draft: WebhookConfig) => void }) {

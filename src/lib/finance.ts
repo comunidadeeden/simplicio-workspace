@@ -55,8 +55,15 @@ export interface TrafficSpendPoint {
   campaign: string;
   adSet: string;
   ad: string;
+  reach: number;
   impressions: number;
+  frequency: number;
+  results: number;
+  costPerResult: number;
+  cpm: number;
   clicks: number;
+  cpc: number;
+  ctr: number;
   leads: number;
   raw: Record<string, string>;
 }
@@ -68,8 +75,15 @@ function makeTrafficPoint(point: Pick<TrafficSpendPoint, 'date' | 'label' | 'acc
     campaign: '',
     adSet: '',
     ad: '',
+    reach: 0,
     impressions: 0,
+    frequency: 0,
+    results: 0,
+    costPerResult: 0,
+    cpm: 0,
     clicks: 0,
+    cpc: 0,
+    ctr: 0,
     leads: 0,
     raw: {},
   };

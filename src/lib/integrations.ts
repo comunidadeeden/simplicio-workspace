@@ -54,6 +54,13 @@ export interface IntegrationSettings {
   webhook: WebhookConfig;
 }
 
+
+export interface SheetInspectionResult {
+  columns: string[];
+  rowCount: number;
+  detected: Partial<SalesSheetConfig & AdAccountConfig>;
+}
+
 export interface SheetLoadResult {
   sales: SalesRevenuePoint[];
   traffic: TrafficSpendPoint[];
@@ -86,9 +93,9 @@ export const defaultIntegrationSettings: IntegrationSettings = {
       spreadsheetUrl: 'https://docs.google.com/spreadsheets/d/1P7EsItEUhVCeeLtpi6Iva48gVX_CszbpXdAy68aE-vk/edit?gid=0#gid=0',
       sheetName: 'Página 1',
       gid: '0',
-      dateColumn: 'data',
-      spendColumn: 'valor gasto',
-      campaignColumn: 'campanha',
+      dateColumn: 'Day',
+      spendColumn: 'Amount Spent',
+      campaignColumn: 'Campaign Name',
       status: 'Ativa',
     },
   ],
@@ -122,6 +129,15 @@ export function subscribeIntegrationSettings(
 
 export async function saveIntegrationSettings(settings: IntegrationSettings) {
   await setDoc(settingsRef, { ...settings, updatedAt: serverTimestamp() }, { merge: true });
+}
+
+export async function inspectSheetConnection(type: 'sales' | 'ads', url: string, gid: string): Promise<SheetInspectionResult> {
+  const { columns, rows } = await fetchSheetTable(url, gid);
+  return {
+    columns,
+    rowCount: rows.length,
+    detected: type === 'ads' ? detectAdColumns(columns) : detectSalesColumns(columns),
+  };
 }
 
 export async function loadSheetData(settings: IntegrationSettings): Promise<SheetLoadResult> {
@@ -173,9 +189,10 @@ async function loadSales(config: SalesSheetConfig): Promise<SalesRevenuePoint[]>
 async function loadTraffic(config: AdAccountConfig): Promise<TrafficSpendPoint[]> {
   const rows = await fetchRows(config.spreadsheetUrl, config.gid);
   return rows.map((row) => {
-    const date = parseDate(readColumn(row, config.dateColumn, ['data', 'date', 'dia', 'day'])) || new Date().toISOString().slice(0, 10);
-    const spend = parseMoney(readColumn(row, config.spendColumn, ['valor gasto', 'gasto', 'investimento', 'spend', 'amount spent', 'valor usado']));
-    const campaign = readColumn(row, config.campaignColumn, ['campanha', 'campaign', 'campaign name', 'nome da campanha']);
+    const date = parseDate(readColumn(row, config.dateColumn, adColumnAliases.date)) || new Date().toISOString().slice(0, 10);
+    const spend = parseMoney(readColumn(row, config.spendColumn, adColumnAliases.spend));
+    const campaign = readColumn(row, config.campaignColumn, adColumnAliases.campaign);
+    const results = parseNumber(readColumn(row, '', adColumnAliases.results));
     return {
       date,
       label: formatShortDate(date),
@@ -183,23 +200,35 @@ async function loadTraffic(config: AdAccountConfig): Promise<TrafficSpendPoint[]
       platform: config.platform,
       spend,
       campaign,
-      adSet: readColumn(row, '', ['conjunto de anuncios', 'conjunto de anúncios', 'ad set', 'adset', 'ad set name', 'nome do conjunto']),
-      ad: readColumn(row, '', ['anuncio', 'anúncio', 'ad', 'ad name', 'nome do anuncio', 'nome do anúncio']),
-      impressions: parseNumber(readColumn(row, '', ['impressoes', 'impressões', 'impressions'])),
-      clicks: parseNumber(readColumn(row, '', ['cliques', 'clicks', 'link clicks', 'cliques no link'])),
-      leads: parseNumber(readColumn(row, '', ['leads', 'cadastros', 'inscricoes', 'inscrições', 'conversoes', 'conversões'])),
+      adSet: readColumn(row, '', adColumnAliases.adSet),
+      ad: readColumn(row, '', adColumnAliases.ad),
+      reach: parseNumber(readColumn(row, '', adColumnAliases.reach)),
+      impressions: parseNumber(readColumn(row, '', adColumnAliases.impressions)),
+      frequency: parseNumber(readColumn(row, '', adColumnAliases.frequency)),
+      results,
+      costPerResult: parseMoney(readColumn(row, '', adColumnAliases.costPerResult)),
+      cpm: parseMoney(readColumn(row, '', adColumnAliases.cpm)),
+      clicks: parseNumber(readColumn(row, '', adColumnAliases.clicks)),
+      cpc: parseMoney(readColumn(row, '', adColumnAliases.cpc)),
+      ctr: parseNumber(readColumn(row, '', adColumnAliases.ctr)),
+      leads: results || parseNumber(readColumn(row, '', adColumnAliases.leads)),
       raw: row,
     };
   }).filter((point) => point.spend > 0);
 }
 
 async function fetchRows(url: string, gid: string) {
+  const { rows } = await fetchSheetTable(url, gid);
+  return rows;
+}
+
+async function fetchSheetTable(url: string, gid: string) {
   const response = await fetch(toCsvUrl(url, gid), { cache: 'no-store' });
   const text = await response.text();
   if (!response.ok || text.trim().startsWith('<!DOCTYPE html') || text.includes('document-root show-login-page')) {
     throw new Error('planilha privada ou sem publicação CSV');
   }
-  return csvToRows(text);
+  return csvToTable(text);
 }
 
 export function toCsvUrl(url: string, gid = '0') {
@@ -209,12 +238,14 @@ export function toCsvUrl(url: string, gid = '0') {
   return `https://docs.google.com/spreadsheets/d/${id}/export?format=csv&gid=${resolvedGid}`;
 }
 
-function csvToRows(csv: string) {
+function csvToTable(csv: string) {
   const table = parseCsv(csv);
-  const headers = (table.shift() ?? []).map(normalizeHeader);
-  return table
+  const columns = table.shift() ?? [];
+  const headers = columns.map(normalizeHeader);
+  const rows = table
     .filter((row) => row.some((cell) => cell.trim()))
     .map((row) => Object.fromEntries(headers.map((header, index) => [header, row[index] ?? ''])));
+  return { columns: columns.map((column) => column.trim()).filter(Boolean), rows };
 }
 
 function parseCsv(csv: string) {
@@ -252,6 +283,56 @@ function parseCsv(csv: string) {
   return rows;
 }
 
+
+const salesColumnAliases = {
+  date: ['data', 'date', 'created_at', 'data da venda', 'data compra', 'data pedido', 'data de compra'],
+  revenue: ['valor', 'receita', 'faturamento', 'valor líquido', 'valor liquido', 'total', 'amount', 'price', 'preço', 'preco'],
+  order: ['pedidos', 'orders', 'vendas', 'pedido', 'order id', 'id pedido', 'transaction', 'transacao', 'transação'],
+  product: ['produto', 'product', 'produto nome', 'nome produto', 'plataforma', 'offer', 'oferta', 'item', 'plano'],
+  status: ['status', 'situação', 'situacao', 'estado', 'pagamento', 'status pagamento', 'payment status'],
+};
+
+const adColumnAliases = {
+  date: ['Day', 'data', 'date', 'dia', 'day'],
+  campaign: ['Campaign Name', 'campanha', 'campaign', 'nome da campanha'],
+  adSet: ['Ad Set Name', 'conjunto de anuncios', 'conjunto de anúncios', 'ad set', 'adset', 'nome do conjunto'],
+  ad: ['Ad Name', 'anuncio', 'anúncio', 'ad', 'nome do anuncio', 'nome do anúncio'],
+  reach: ['Reach', 'alcance'],
+  impressions: ['Impressions', 'impressoes', 'impressões'],
+  frequency: ['Frequency', 'frequencia', 'frequência'],
+  results: ['Results', 'resultados', 'leads', 'conversoes', 'conversões'],
+  costPerResult: ['Cost per Result', 'custo por resultado', 'cost per result'],
+  spend: ['Amount Spent', 'valor gasto', 'gasto', 'investimento', 'spend', 'amount spent', 'valor usado'],
+  cpm: ['CPM (Cost per 1,000 Impressions)', 'cpm', 'cost per 1,000 impressions'],
+  clicks: ['Link Clicks', 'cliques no link', 'link clicks', 'cliques', 'clicks'],
+  cpc: ['CPC (Cost per Link Click)', 'cpc', 'cost per link click'],
+  ctr: ['CTR (Link Click-Through Rate)', 'ctr', 'link click-through rate'],
+  leads: ['Results', 'leads', 'cadastros', 'inscricoes', 'inscrições', 'conversoes', 'conversões'],
+};
+
+function detectSalesColumns(columns: string[]): Partial<SalesSheetConfig> {
+  return {
+    dateColumn: findColumn(columns, salesColumnAliases.date),
+    revenueColumn: findColumn(columns, salesColumnAliases.revenue),
+    orderColumn: findColumn(columns, salesColumnAliases.order),
+    productColumn: findColumn(columns, salesColumnAliases.product),
+    statusColumn: findColumn(columns, salesColumnAliases.status),
+  };
+}
+
+function detectAdColumns(columns: string[]): Partial<AdAccountConfig> {
+  return {
+    dateColumn: findColumn(columns, adColumnAliases.date),
+    spendColumn: findColumn(columns, adColumnAliases.spend),
+    campaignColumn: findColumn(columns, adColumnAliases.campaign),
+  };
+}
+
+function findColumn(columns: string[], aliases: string[]) {
+  const normalizedAliases = aliases.map(normalizeHeader);
+  return columns.find((column) => normalizedAliases.includes(normalizeHeader(column))) || '';
+}
+
 function readColumn(row: Record<string, string>, preferred: string, alternatives: string[]) {
   const keys = [preferred, ...alternatives].map(normalizeHeader).filter(Boolean);
   const key = keys.find((item) => row[item] !== undefined);
@@ -259,19 +340,26 @@ function readColumn(row: Record<string, string>, preferred: string, alternatives
 }
 
 function parseMoney(value: string) {
-  const cleaned = value.replace(/[^\d,.-]/g, '').trim();
-  if (!cleaned) return 0;
-  const hasComma = cleaned.includes(',');
-  const normalized = hasComma ? cleaned.replace(/\./g, '').replace(',', '.') : cleaned;
-  return Number(normalized) || 0;
+  return parseFlexibleNumber(value);
 }
 
 function parseNumber(value: string) {
+  return parseFlexibleNumber(value);
+}
+
+function parseFlexibleNumber(value: string) {
   const cleaned = value.replace(/[^\d,.-]/g, '').trim();
   if (!cleaned) return 0;
-  const hasComma = cleaned.includes(',');
-  const normalized = hasComma ? cleaned.replace(/\./g, '').replace(',', '.') : cleaned;
-  return Number(normalized) || 0;
+  const lastComma = cleaned.lastIndexOf(',');
+  const lastDot = cleaned.lastIndexOf('.');
+  if (lastComma >= 0 && lastDot >= 0) {
+    const normalized = lastComma > lastDot
+      ? cleaned.replace(/\./g, '').replace(',', '.')
+      : cleaned.replace(/,/g, '');
+    return Number(normalized) || 0;
+  }
+  if (lastComma >= 0) return Number(cleaned.replace(/\./g, '').replace(',', '.')) || 0;
+  return Number(cleaned) || 0;
 }
 
 function parseDate(value: string) {

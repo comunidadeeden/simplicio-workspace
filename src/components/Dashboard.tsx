@@ -160,9 +160,7 @@ export function Dashboard() {
         </Panel>
 
         <Panel className="xl:col-span-4" title="Funil do ciclo" description="Etapas principais do tráfego até as compras.">
-          <div className="space-y-3">
-            {funnelData.map((item, index) => <div key={item.label}><FunnelStep item={item} index={index} total={funnelData[0]?.value ?? 0} /></div>)}
-          </div>
+          <FunnelChart steps={funnelData} />
         </Panel>
       </section>
 
@@ -231,20 +229,83 @@ function ProductFilterChips({ options, selected, onToggle, onClear }: { options:
   return <div className="flex min-h-9 max-w-[540px] flex-wrap items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-950 p-1"><button type="button" onClick={onClear} className={cn('rounded-md px-2.5 py-1.5 text-[11px] font-semibold transition-colors', selected.length === 0 ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-900 hover:text-slate-200')}>Todos</button>{options.map((item) => <button key={item} type="button" onClick={() => onToggle(item)} className={cn('rounded-md px-2.5 py-1.5 text-[11px] font-semibold transition-colors', selected.includes(item) ? 'bg-blue-500/15 text-blue-200 ring-1 ring-blue-500/30' : 'text-slate-500 hover:bg-slate-900 hover:text-slate-200')}>{item}</button>)}</div>;
 }
 
-function FunnelStep({ item, index, total }: { item: { label: string; value: number }; index: number; total: number }) {
-  const percent = total ? Math.min(100, Math.round((item.value / total) * 100)) : 0;
-  return <div className="rounded-xl border border-slate-900 bg-slate-950/70 p-3"><div className="flex items-center justify-between gap-3"><span className="flex min-w-0 items-center gap-2 text-[11px] font-semibold uppercase tracking-widest text-slate-500"><span className="flex h-5 w-5 items-center justify-center rounded bg-blue-500/10 font-mono text-[10px] text-blue-300">{index + 1}</span>{item.label}</span><span className="font-mono text-base font-bold text-slate-100">{number.format(Math.round(item.value))}</span></div><div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-900"><div className="h-full rounded-full bg-blue-500" style={{ width: `${percent}%` }} /></div></div>;
+type FunnelStepData = {
+  label: string;
+  value: number;
+  conversion: number | null;
+  costLabel: string;
+  costValue: number | null;
+};
+
+function FunnelChart({ steps }: { steps: FunnelStepData[] }) {
+  return (
+    <div className="rounded-2xl border border-slate-900 bg-[#11130f] p-4">
+      <div className="grid gap-4 lg:grid-cols-[minmax(220px,1fr)_150px]">
+        <div className="relative space-y-2.5">
+          {steps.map((step, index) => (
+            <div key={step.label} className="relative flex justify-center">
+              {index > 0 && <ConversionBadge value={step.conversion} />}
+              <div
+                className="relative z-10 flex min-h-[58px] flex-col items-center justify-center border border-yellow-300/30 bg-yellow-300 px-4 py-2 text-center text-slate-950 shadow-[0_0_24px_rgba(250,204,21,0.16)]"
+                style={{
+                  width: `${Math.max(52, 100 - index * 9)}%`,
+                  clipPath: 'polygon(5% 0, 95% 0, 88% 100%, 12% 100%)',
+                }}
+              >
+                <span className="text-[10px] font-bold uppercase leading-none tracking-wide text-slate-700">{step.label}</span>
+                <span className="mt-1 font-mono text-2xl font-bold leading-none tracking-tighter">{number.format(Math.round(step.value))}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex flex-col justify-between gap-2">
+          {steps.map((step) => (
+            <div key={step.label} className="min-h-[58px] border-l border-slate-800 pl-3">
+              <div className="flex h-full flex-col justify-center">
+                <span className="text-[10px] font-semibold leading-tight text-slate-500">{step.costLabel}</span>
+                <span className="mt-1 font-mono text-[15px] font-bold leading-none text-slate-100">{step.costValue === null ? 'N/A' : money.format(step.costValue)}</span>
+                {step.conversion !== null && <span className={cn('mt-1 text-[10px] font-semibold', step.conversion > 0 ? 'text-emerald-400' : 'text-slate-600')}>{formatPercent(step.conversion)}</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }
 
-function buildFunnel(traffic: TrafficSpendPoint[], revenue: SalesRevenuePoint[]) {
-  return [
-    { label: 'Impressões', value: sum(traffic.map((item) => item.impressions)) },
-    { label: 'Cliques', value: sum(traffic.map((item) => item.clicks)) },
-    { label: 'Visualização de página', value: sum(traffic.map((item) => readTrafficNumber(item, ['landing page views', 'visualizacoes de pagina', 'visualizações de página', 'visualizacao de pagina', 'page views']))) },
-    { label: 'Initiate checkout', value: sum(traffic.map((item) => readTrafficNumber(item, ['initiate checkout', 'checkouts iniciados', 'iniciar finalizacao', 'iniciar finalização']))) },
-    { label: 'Compra do workshop', value: sum(revenue.filter((item) => isWorkshopProduct(item.platform)).map((item) => item.orders)) },
-    { label: 'Compra do Éden', value: sum(revenue.filter((item) => isEdenProduct(item.platform)).map((item) => item.orders)) },
+function ConversionBadge({ value }: { value: number | null }) {
+  return (
+    <div className="absolute -top-4 right-0 z-20 hidden items-center gap-2 md:flex">
+      <span className="h-px w-12 bg-slate-700" />
+      <span className="rounded-lg border border-yellow-300/30 bg-slate-950 px-2 py-1 font-mono text-[10px] font-bold text-slate-200 shadow-[0_0_16px_rgba(250,204,21,0.12)]">{value === null ? '0,00%' : formatPercent(value)}</span>
+    </div>
+  );
+}
+
+function buildFunnel(traffic: TrafficSpendPoint[], revenue: SalesRevenuePoint[]): FunnelStepData[] {
+  const spend = sum(traffic.map((item) => item.spend));
+  const impressions = sum(traffic.map((item) => item.impressions));
+  const clicks = sum(traffic.map((item) => item.clicks));
+  const pageViews = sum(traffic.map((item) => readTrafficNumber(item, ['landing page views', 'visualizacoes de pagina', 'visualizações de página', 'visualizacao de pagina', 'page views'])));
+  const checkouts = sum(traffic.map((item) => readTrafficNumber(item, ['initiate checkout', 'checkouts iniciados', 'iniciar finalizacao', 'iniciar finalização'])));
+  const workshopPurchases = sum(revenue.filter((item) => isWorkshopProduct(item.platform)).map((item) => item.orders));
+  const edenPurchases = sum(revenue.filter((item) => isEdenProduct(item.platform)).map((item) => item.orders));
+
+  const rawSteps = [
+    { label: 'Impressões', value: impressions, costLabel: 'CPM', costValue: impressions ? (spend / impressions) * 1000 : null },
+    { label: 'Cliques no link', value: clicks, costLabel: 'Custo/clique', costValue: clicks ? spend / clicks : null },
+    { label: 'Page view', value: pageViews, costLabel: 'Custo/page view', costValue: pageViews ? spend / pageViews : null },
+    { label: 'Iniciou checkout', value: checkouts, costLabel: 'Custo/checkout', costValue: checkouts ? spend / checkouts : null },
+    { label: 'Compras workshop', value: workshopPurchases, costLabel: 'Custo/compra', costValue: workshopPurchases ? spend / workshopPurchases : null },
+    { label: 'Compras Éden', value: edenPurchases, costLabel: 'Custo/Éden', costValue: edenPurchases ? spend / edenPurchases : null },
   ];
+
+  return rawSteps.map((step, index) => ({
+    ...step,
+    conversion: index === 0 ? null : rawSteps[index - 1].value ? step.value / rawSteps[index - 1].value : 0,
+  }));
 }
 
 function readTrafficNumber(item: TrafficSpendPoint, aliases: string[]) {
@@ -341,6 +402,10 @@ function parseFlexibleNumber(value: string) {
   }
   if (lastComma >= 0) return Number(cleaned.replace(/\./g, '').replace(',', '.')) || 0;
   return Number(cleaned) || 0;
+}
+
+function formatPercent(value: number) {
+  return `${(value * 100).toFixed(2).replace('.', ',')}%`;
 }
 
 function unique(values: string[]) {

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { motion } from 'motion/react';
 import { AreaChart, Area, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, CartesianGrid } from 'recharts';
 import { AlertTriangle, ArrowDownRight, ArrowUpRight, CalendarDays, Filter, PieChart as PieChartIcon, RefreshCw, Target, TrendingUp, Wallet } from 'lucide-react';
-import { defaultCycleSettings, describeCycle, describeCycleWindows, getCurrentOperationCycle, getRecentCycles, isInEdenWindow, isInWorkshopWindow, type CycleSettings } from '../lib/cycles';
+import { defaultCycleSettings, describeCycle, describeCycleWindows, getCycleLabel, getCurrentOperationCycle, getRecentCycles, isInEdenWindow, isInWorkshopWindow, type CycleSettings } from '../lib/cycles';
 import { type SalesRevenuePoint, type TrafficSpendPoint } from '../lib/finance';
 import { defaultIntegrationSettings, loadSheetData, subscribeIntegrationSettings } from '../lib/integrations';
 import { cn } from '../lib/utils';
@@ -20,7 +20,7 @@ export function Dashboard() {
   const [traffic, setTraffic] = useState<TrafficSpendPoint[]>([]);
   const [status, setStatus] = useState<LoadStatus>('loading');
   const [sheetMessage, setSheetMessage] = useState('Carregando planilhas configuradas...');
-  const [productFilters, setProductFilters] = useState<string[]>(['Workshop']);
+  const [productFilters, setProductFilters] = useState<string[]>(['Workshop', 'Éden']);
   const [accountFilter, setAccountFilter] = useState('Todas');
   const [customStart, setCustomStart] = useState(defaultDateRange.start);
   const [customEnd, setCustomEnd] = useState(defaultDateRange.end);
@@ -95,6 +95,13 @@ export function Dashboard() {
     return matchesDate(item.date, selectedCycle.start, selectedCycle.edenEnd);
   }), [cycleMode, cycleSettings, operationCycle.eden, operationCycle.workshop, revenue, selectedCycle]);
 
+  const workshopCycleRevenue = cycleScopedRevenue.filter((item) => isWorkshopProduct(item.platform));
+  const edenCycleRevenue = cycleScopedRevenue.filter((item) => isEdenProduct(item.platform));
+  const workshopCycleOrders = sum(workshopCycleRevenue.map((item) => item.orders));
+  const edenCycleOrders = sum(edenCycleRevenue.map((item) => item.orders));
+  const workshopCycleMoney = sum(workshopCycleRevenue.map((item) => item.revenue));
+  const edenCycleMoney = sum(edenCycleRevenue.map((item) => item.revenue));
+
   const totalRevenue = sum(filteredRevenue.map((item) => item.revenue));
   const totalOrders = sum(filteredRevenue.map((item) => item.orders));
   const totalTraffic = sum(filteredTraffic.map((item) => item.spend));
@@ -130,7 +137,7 @@ export function Dashboard() {
               <option value="operation">Operação atual</option>
               <option value="cycle">Resultado do ciclo</option>
             </select>
-            {cycleMode === 'cycle' && <select className="h-9 rounded-lg border border-slate-800 bg-slate-950 px-3 text-[12px] text-slate-300 outline-none focus:ring-1 focus:ring-blue-600" value={selectedCycle?.id ?? ''} onChange={(event) => setSelectedCycleId(event.target.value)} aria-label="Ciclo">{cycleOptions.map((cycle) => <option key={cycle.id} value={cycle.id}>{cycle.label}</option>)}</select>}
+            {cycleMode === 'cycle' && <select className="h-9 rounded-lg border border-slate-800 bg-slate-950 px-3 text-[12px] text-slate-300 outline-none focus:ring-1 focus:ring-blue-600" value={selectedCycle?.id ?? ''} onChange={(event) => setSelectedCycleId(event.target.value)} aria-label="Ciclo">{cycleOptions.map((cycle) => <option key={cycle.id} value={cycle.id}>{getCycleLabel(cycle)}</option>)}</select>}
             <ProductFilterChips options={productOptions} selected={productFilters} onToggle={toggleProductFilter} onClear={() => setProductFilters([])} />
 
             <button
@@ -147,7 +154,7 @@ export function Dashboard() {
           </div>
           <div className="flex items-center gap-2 text-[11px] text-slate-600">
             <CalendarDays size={12} />
-            <span>{cycleMode === 'operation' ? `Workshop atual: ${operationWindows.workshop.workshop} | Éden atual: ${operationWindows.eden.eden}` : selectedCycle && activeCycleWindows ? `${describeCycle(selectedCycle)} | Workshop: ${activeCycleWindows.workshop} | Éden: ${activeCycleWindows.eden}` : describeRange(dateRange.start, dateRange.end)}</span>
+            <span>{cycleMode === 'operation' ? `Operação atual | Workshop: ${operationWindows.workshop.workshop} | Éden: ${operationWindows.eden.eden}` : selectedCycle && activeCycleWindows ? `${getCycleLabel(selectedCycle)} | Workshop: ${activeCycleWindows.workshop} | Éden: ${activeCycleWindows.eden}` : describeRange(dateRange.start, dateRange.end)}</span>
           </div>
         </div>
       </div>
@@ -165,9 +172,10 @@ export function Dashboard() {
       )}
 
       <section className="grid grid-cols-1 gap-3 md:grid-cols-2">
-        <CycleInfoCard title="Workshop" detail={cycleMode === 'operation' ? 'Captação em andamento' : 'Captação do ciclo selecionado'} range={cycleMode === 'operation' ? operationWindows.workshop.workshop : activeCycleWindows?.workshop ?? ''} value={number.format(sum(cycleScopedRevenue.filter((item) => isWorkshopProduct(item.platform)).map((item) => item.orders)))} />
-        <CycleInfoCard title="Éden" detail={cycleMode === 'operation' ? 'Monetização do ciclo anterior' : 'Monetização do ciclo selecionado'} range={cycleMode === 'operation' ? operationWindows.eden.eden : activeCycleWindows?.eden ?? ''} value={number.format(sum(cycleScopedRevenue.filter((item) => isEdenProduct(item.platform)).map((item) => item.orders)))} />
+        <CycleInfoCard title="Workshop" detail={cycleMode === 'operation' ? 'Captação em andamento' : 'Captação do ciclo selecionado'} range={cycleMode === 'operation' ? operationWindows.workshop.workshop : activeCycleWindows?.workshop ?? ''} value={number.format(workshopCycleOrders)} amount={money.format(workshopCycleMoney)} />
+        <CycleInfoCard title="Éden" detail={cycleMode === 'operation' ? 'Monetização do ciclo anterior' : 'Monetização do ciclo selecionado'} range={cycleMode === 'operation' ? operationWindows.eden.eden : activeCycleWindows?.eden ?? ''} value={number.format(edenCycleOrders)} amount={money.format(edenCycleMoney)} />
       </section>
+      <p className="-mt-3 text-[11px] text-slate-600">Regra do ciclo: sábado às 09:00. Quando a planilha não informa horário, vendas do sábado são tratadas como antes das 09:00 e entram no ciclo que está fechando.</p>
 
       <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
         <MetricCard label="Faturamento" value={money.format(totalRevenue)} icon={TrendingUp} tone="blue" />
@@ -237,8 +245,8 @@ export function Dashboard() {
   );
 }
 
-function CycleInfoCard({ title, detail, range, value }: { title: string; detail: string; range: string; value: string }) {
-  return <div className="rounded-xl border border-blue-500/10 bg-slate-950 p-4"><div className="flex items-start justify-between gap-4"><div><p className="text-[11px] font-semibold uppercase tracking-widest text-blue-400">{title}</p><p className="mt-1 text-[12px] font-medium text-slate-300">{detail}</p><p className="mt-2 text-[11px] text-slate-500">{range}</p></div><div className="text-right"><p className="font-mono text-2xl font-bold tracking-tighter text-slate-100">{value}</p><p className="text-[10px] uppercase tracking-widest text-slate-600">vendas</p></div></div></div>;
+function CycleInfoCard({ title, detail, range, value, amount }: { title: string; detail: string; range: string; value: string; amount: string }) {
+  return <div className="rounded-xl border border-blue-500/10 bg-slate-950 p-4"><div className="flex items-start justify-between gap-4"><div><p className="text-[11px] font-semibold uppercase tracking-widest text-blue-400">{title}</p><p className="mt-1 text-[12px] font-medium text-slate-300">{detail}</p><p className="mt-2 text-[11px] text-slate-500">{range}</p><p className="mt-2 font-mono text-[12px] font-semibold text-slate-300">{amount}</p></div><div className="text-right"><p className="font-mono text-2xl font-bold tracking-tighter text-slate-100">{value}</p><p className="text-[10px] uppercase tracking-widest text-slate-600">vendas</p></div></div></div>;
 }
 
 function StatusBanner({ status, message }: { status: LoadStatus; message: string }) {

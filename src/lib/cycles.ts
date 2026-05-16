@@ -61,6 +61,10 @@ export function describeCycle(cycle: LaunchCycle) {
   return `${formatShortDate(cycle.start)} -> ${formatShortDate(cycle.edenEnd)}`;
 }
 
+export function getCycleLabel(cycle: LaunchCycle) {
+  return `Ciclo ${formatShortDate(cycle.start)} a ${formatShortDate(cycle.edenEnd)}`;
+}
+
 export function describeCycleWindows(cycle: LaunchCycle) {
   return {
     workshop: `${formatShortDate(cycle.start)} -> ${formatShortDate(cycle.workshopEnd)}`,
@@ -86,8 +90,7 @@ export function formatShortDate(date: string) {
 
 function resolveMoment(date: string, occurredAt: string | undefined, settings: CycleSettings) {
   if (occurredAt) return new Date(occurredAt);
-  const fallback = new Date(`${date}T00:00:00`);
-  return applyCutoffTime(fallback, settings.cutoffTime);
+  return new Date(`${date}T00:00:00`);
 }
 
 function toWindowStart(date: string, settings: CycleSettings) {

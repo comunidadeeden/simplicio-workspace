@@ -19,7 +19,7 @@ export function Dashboard() {
   const [traffic, setTraffic] = useState<TrafficSpendPoint[]>([]);
   const [status, setStatus] = useState<LoadStatus>('loading');
   const [sheetMessage, setSheetMessage] = useState('Carregando planilhas configuradas...');
-  const [productFilter, setProductFilter] = useState('Ingresso do workshop');
+  const [productFilters, setProductFilters] = useState<string[]>(['Workshop']);
   const [accountFilter, setAccountFilter] = useState('Todas');
   const [customStart, setCustomStart] = useState(defaultDateRange.start);
   const [customEnd, setCustomEnd] = useState(defaultDateRange.end);
@@ -47,15 +47,14 @@ export function Dashboard() {
     );
   }, []);
 
-  const productOptions = useMemo(() => ['Todos', 'Ingresso do workshop', ...unique(revenue.map((item) => item.platform)).filter((item) => item !== 'Ingresso do workshop')], [revenue]);
+  const productOptions = useMemo(() => ['Workshop', 'Éden', ...unique(revenue.map((item) => item.platform)).filter((item) => !isWorkshopProduct(item) && !isEdenProduct(item))], [revenue]);
   const accountOptions = useMemo(() => ['Todas', ...unique(traffic.map((item) => item.account))], [traffic]);
   const dateRange = useMemo(() => ({ start: customStart, end: customEnd }), [customEnd, customStart]);
 
   const filteredRevenue = useMemo(() => revenue.filter((item) => {
-    const matchesProduct = productFilter === 'Todos'
-      || (productFilter === 'Ingresso do workshop' ? isWorkshopProduct(item.platform) : item.platform === productFilter);
+    const matchesProduct = productFilters.length === 0 || productFilters.some((filter) => matchesProductFilter(item.platform, filter));
     return matchesProduct && matchesDate(item.date, dateRange.start, dateRange.end);
-  }), [dateRange.end, dateRange.start, productFilter, revenue]);
+  }), [dateRange.end, dateRange.start, productFilters, revenue]);
 
   const filteredTraffic = useMemo(() => traffic.filter((item) => {
     const matchesAccount = accountFilter === 'Todas' || item.account === accountFilter;
@@ -69,12 +68,16 @@ export function Dashboard() {
   const averageTicket = totalRevenue / Math.max(totalOrders, 1);
   const cpa = totalOrders ? totalTraffic / totalOrders : 0;
 
-  const trafficByAccount = useMemo(() => groupTrafficByAccount(filteredTraffic), [filteredTraffic]);
+  const funnelData = useMemo(() => buildFunnel(filteredTraffic, filteredRevenue), [filteredRevenue, filteredTraffic]);
   const productData = useMemo(() => groupRevenueByProduct(filteredRevenue), [filteredRevenue]);
   const dailyFlow = useMemo(() => mergeDailyFlow(filteredRevenue, filteredTraffic), [filteredRevenue, filteredTraffic]);
 
+  const toggleProductFilter = (filter: string) => {
+    setProductFilters((current) => current.includes(filter) ? current.filter((item) => item !== filter) : [...current, filter]);
+  };
+
   const resetSegmentFilters = () => {
-    setProductFilter('Todos');
+    setProductFilters([]);
     setAccountFilter('Todas');
   };
 
@@ -89,9 +92,7 @@ export function Dashboard() {
         <div className="flex w-full flex-col gap-3 xl:w-auto xl:items-end">
           <StatusBanner status={status} message={sheetMessage} />
           <div className="flex flex-wrap items-center gap-2 xl:justify-end">
-            <select className="h-9 min-w-[220px] rounded-lg border border-slate-800 bg-slate-950 px-3 text-[12px] text-slate-300 outline-none focus:ring-1 focus:ring-blue-600" value={productFilter} onChange={(event) => setProductFilter(event.target.value)} aria-label="Produto">
-              {productOptions.map((item) => <option key={item}>{item}</option>)}
-            </select>
+            <ProductFilterChips options={productOptions} selected={productFilters} onToggle={toggleProductFilter} onClear={() => setProductFilters([])} />
             <div className="grid grid-cols-2 gap-2">
               <input className="h-9 rounded-lg border border-slate-800 bg-slate-950 px-3 text-[12px] text-slate-300 outline-none focus:ring-1 focus:ring-blue-600" type="date" value={customStart} onChange={(event) => setCustomStart(event.target.value)} aria-label="Data inicial" />
               <input className="h-9 rounded-lg border border-slate-800 bg-slate-950 px-3 text-[12px] text-slate-300 outline-none focus:ring-1 focus:ring-blue-600" type="date" value={customEnd} onChange={(event) => setCustomEnd(event.target.value)} aria-label="Data final" />
@@ -128,11 +129,11 @@ export function Dashboard() {
       )}
 
       <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <MetricCard label="Faturamento" value={money.format(totalRevenue)} detail={`${number.format(totalOrders)} pedido(s)`} icon={TrendingUp} tone="blue" positive />
-        <MetricCard label="Tráfego" value={money.format(totalTraffic)} detail={`${number.format(filteredTraffic.length)} linha(s) importada(s)`} icon={ArrowDownRight} tone="amber" />
-        <MetricCard label="ROAS" value={roas.toFixed(2).replace('.', ',')} detail="Receita / mídia" icon={Target} tone={roas >= 2 ? 'green' : roas >= 1 ? 'amber' : 'rose'} positive={roas >= 1} />
-        <MetricCard label="Ticket médio" value={money.format(averageTicket)} detail="Receita por pedido" icon={Wallet} tone="green" positive />
-        <MetricCard label="CPA" value={money.format(cpa)} detail="Custo por pedido" icon={ArrowUpRight} tone={cpa ? 'blue' : 'rose'} positive={Boolean(cpa)} />
+        <MetricCard label="Faturamento" value={money.format(totalRevenue)} icon={TrendingUp} tone="blue" />
+        <MetricCard label="Tráfego" value={money.format(totalTraffic)} icon={ArrowDownRight} tone="amber" />
+        <MetricCard label="ROAS" value={roas.toFixed(2).replace('.', ',')} icon={Target} tone={roas >= 2 ? 'green' : roas >= 1 ? 'amber' : 'rose'} />
+        <MetricCard label="Ticket médio" value={money.format(averageTicket)} icon={Wallet} tone="green" />
+        <MetricCard label="CPA" value={money.format(cpa)} icon={ArrowUpRight} tone={cpa ? 'blue' : 'rose'} />
       </section>
 
       {status === 'error' && (
@@ -158,18 +159,10 @@ export function Dashboard() {
           </div>
         </Panel>
 
-        <Panel className="xl:col-span-4" title="Contas de anúncio" description="Distribuição do gasto por conta.">
-          <div className="h-[240px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={trafficByAccount} innerRadius={56} outerRadius={88} dataKey="value" paddingAngle={3}>
-                  {trafficByAccount.map((_, index) => <Cell key={index} fill={COLORS[index % COLORS.length]} />)}
-                </Pie>
-                <Tooltip contentStyle={{ backgroundColor: '#020617', border: '1px solid #1e293b', borderRadius: '8px', fontSize: '11px' }} formatter={(value) => money.format(Number(value))} />
-              </PieChart>
-            </ResponsiveContainer>
+        <Panel className="xl:col-span-4" title="Funil do ciclo" description="Etapas principais do tráfego até as compras.">
+          <div className="space-y-3">
+            {funnelData.map((item, index) => <div key={item.label}><FunnelStep item={item} index={index} total={funnelData[0]?.value ?? 0} /></div>)}
           </div>
-          <div className="mt-4 space-y-2">{trafficByAccount.slice(0, 5).map((item, index) => <div key={item.name}><SummaryLine label={item.name} value={money.format(item.value)} color={COLORS[index % COLORS.length]} /></div>)}</div>
         </Panel>
       </section>
 
@@ -208,9 +201,9 @@ function StatusBanner({ status, message }: { status: LoadStatus; message: string
   return <div className={cn('max-w-xl rounded-lg border px-3 py-2 text-[11px] font-semibold leading-5', tone)}>{status === 'loading' && <RefreshCw size={12} className="mr-2 inline animate-spin" />}{message}</div>;
 }
 
-function MetricCard({ label, value, detail, icon: Icon, tone, positive }: { label: string; value: string; detail: string; icon: typeof TrendingUp; tone: 'blue' | 'green' | 'amber' | 'rose'; positive?: boolean }) {
+function MetricCard({ label, value, icon: Icon, tone }: { label: string; value: string; icon: typeof TrendingUp; tone: 'blue' | 'green' | 'amber' | 'rose' }) {
   const tones = { blue: 'text-blue-400', green: 'text-emerald-400', amber: 'text-amber-300', rose: 'text-rose-300' };
-  return <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="rounded-xl border border-slate-900/80 bg-slate-950 p-4"><div className="flex items-start justify-between gap-4"><div><p className="text-[11px] font-medium uppercase tracking-widest text-slate-500">{label}</p><p className="mt-2 font-mono text-lg font-bold tracking-tighter text-slate-100">{value}</p></div><div className={cn('flex h-8 w-8 items-center justify-center rounded-lg border border-slate-800 bg-slate-900/50', tones[tone])}><Icon size={15} /></div></div><p className={cn('mt-2 inline-flex items-center gap-1 text-[11px]', positive ? 'text-emerald-400' : 'text-slate-600')}>{positive ? <ArrowUpRight size={11} /> : null}{detail}</p></motion.div>;
+  return <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="rounded-xl border border-slate-900/80 bg-slate-950 p-4"><div className="flex items-start justify-between gap-4"><div><p className="text-[11px] font-medium uppercase tracking-widest text-slate-500">{label}</p><p className="mt-2 font-mono text-lg font-bold tracking-tighter text-slate-100">{value}</p></div><div className={cn('flex h-8 w-8 items-center justify-center rounded-lg border border-slate-800 bg-slate-900/50', tones[tone])}><Icon size={15} /></div></div></motion.div>;
 }
 
 function Panel({ title, description, className, children }: { title: string; description: string; className?: string; children: ReactNode }) {
@@ -234,12 +227,29 @@ function EmptyText({ text }: { text: string }) {
   return <p className="rounded-lg border border-slate-900 bg-slate-950/70 p-3 text-[11px] text-slate-500">{text}</p>;
 }
 
-function groupTrafficByAccount(traffic: TrafficSpendPoint[]) {
-  const groups = traffic.reduce<Record<string, number>>((acc, item) => {
-    acc[item.account] = (acc[item.account] ?? 0) + item.spend;
-    return acc;
-  }, {});
-  return Object.entries(groups).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+function ProductFilterChips({ options, selected, onToggle, onClear }: { options: string[]; selected: string[]; onToggle: (value: string) => void; onClear: () => void }) {
+  return <div className="flex min-h-9 max-w-[540px] flex-wrap items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-950 p-1"><button type="button" onClick={onClear} className={cn('rounded-md px-2.5 py-1.5 text-[11px] font-semibold transition-colors', selected.length === 0 ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-900 hover:text-slate-200')}>Todos</button>{options.map((item) => <button key={item} type="button" onClick={() => onToggle(item)} className={cn('rounded-md px-2.5 py-1.5 text-[11px] font-semibold transition-colors', selected.includes(item) ? 'bg-blue-500/15 text-blue-200 ring-1 ring-blue-500/30' : 'text-slate-500 hover:bg-slate-900 hover:text-slate-200')}>{item}</button>)}</div>;
+}
+
+function FunnelStep({ item, index, total }: { item: { label: string; value: number }; index: number; total: number }) {
+  const percent = total ? Math.min(100, Math.round((item.value / total) * 100)) : 0;
+  return <div className="rounded-xl border border-slate-900 bg-slate-950/70 p-3"><div className="flex items-center justify-between gap-3"><span className="flex min-w-0 items-center gap-2 text-[11px] font-semibold uppercase tracking-widest text-slate-500"><span className="flex h-5 w-5 items-center justify-center rounded bg-blue-500/10 font-mono text-[10px] text-blue-300">{index + 1}</span>{item.label}</span><span className="font-mono text-base font-bold text-slate-100">{number.format(Math.round(item.value))}</span></div><div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-900"><div className="h-full rounded-full bg-blue-500" style={{ width: `${percent}%` }} /></div></div>;
+}
+
+function buildFunnel(traffic: TrafficSpendPoint[], revenue: SalesRevenuePoint[]) {
+  return [
+    { label: 'Impressões', value: sum(traffic.map((item) => item.impressions)) },
+    { label: 'Cliques', value: sum(traffic.map((item) => item.clicks)) },
+    { label: 'Visualização de página', value: sum(traffic.map((item) => readTrafficNumber(item, ['landing page views', 'visualizacoes de pagina', 'visualizações de página', 'visualizacao de pagina', 'page views']))) },
+    { label: 'Initiate checkout', value: sum(traffic.map((item) => readTrafficNumber(item, ['initiate checkout', 'checkouts iniciados', 'iniciar finalizacao', 'iniciar finalização']))) },
+    { label: 'Compra do workshop', value: sum(revenue.filter((item) => isWorkshopProduct(item.platform)).map((item) => item.orders)) },
+    { label: 'Compra do Éden', value: sum(revenue.filter((item) => isEdenProduct(item.platform)).map((item) => item.orders)) },
+  ];
+}
+
+function readTrafficNumber(item: TrafficSpendPoint, aliases: string[]) {
+  const key = aliases.map(normalizeKey).find((alias) => item.raw[alias] !== undefined);
+  return key ? parseFlexibleNumber(item.raw[key]) : 0;
 }
 
 function groupRevenueByProduct(revenue: SalesRevenuePoint[]) {
@@ -298,9 +308,39 @@ function toIso(date: Date) {
 }
 
 
+
+function matchesProductFilter(product: string, filter: string) {
+  if (filter === 'Workshop') return isWorkshopProduct(product);
+  if (filter === 'Éden') return isEdenProduct(product);
+  return product === filter;
+}
+
 function isWorkshopProduct(product: string) {
-  const value = product.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const value = normalizeKey(product);
   return /workshop|bussola|ingresso|live|aula/.test(value);
+}
+
+
+function isEdenProduct(product: string) {
+  const value = normalizeKey(product);
+  return /eden|comunidade/.test(value);
+}
+
+function normalizeKey(value: string) {
+  return value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+function parseFlexibleNumber(value: string) {
+  const cleaned = value.replace(/[^\d,.-]/g, '').trim();
+  if (!cleaned) return 0;
+  const lastComma = cleaned.lastIndexOf(',');
+  const lastDot = cleaned.lastIndexOf('.');
+  if (lastComma >= 0 && lastDot >= 0) {
+    const normalized = lastComma > lastDot ? cleaned.replace(/\./g, '').replace(',', '.') : cleaned.replace(/,/g, '');
+    return Number(normalized) || 0;
+  }
+  if (lastComma >= 0) return Number(cleaned.replace(/\./g, '').replace(',', '.')) || 0;
+  return Number(cleaned) || 0;
 }
 
 function unique(values: string[]) {

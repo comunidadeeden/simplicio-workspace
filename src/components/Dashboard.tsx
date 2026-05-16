@@ -19,7 +19,7 @@ export function Dashboard() {
   const [traffic, setTraffic] = useState<TrafficSpendPoint[]>([]);
   const [status, setStatus] = useState<LoadStatus>('loading');
   const [sheetMessage, setSheetMessage] = useState('Carregando planilhas configuradas...');
-  const [productFilter, setProductFilter] = useState('Todos');
+  const [productFilter, setProductFilter] = useState('Ingresso do workshop');
   const [accountFilter, setAccountFilter] = useState('Todas');
   const [customStart, setCustomStart] = useState(defaultDateRange.start);
   const [customEnd, setCustomEnd] = useState(defaultDateRange.end);
@@ -47,12 +47,13 @@ export function Dashboard() {
     );
   }, []);
 
-  const productOptions = useMemo(() => ['Todos', ...unique(revenue.map((item) => item.platform))], [revenue]);
+  const productOptions = useMemo(() => ['Todos', 'Ingresso do workshop', ...unique(revenue.map((item) => item.platform)).filter((item) => item !== 'Ingresso do workshop')], [revenue]);
   const accountOptions = useMemo(() => ['Todas', ...unique(traffic.map((item) => item.account))], [traffic]);
   const dateRange = useMemo(() => ({ start: customStart, end: customEnd }), [customEnd, customStart]);
 
   const filteredRevenue = useMemo(() => revenue.filter((item) => {
-    const matchesProduct = productFilter === 'Todos' || item.platform === productFilter;
+    const matchesProduct = productFilter === 'Todos'
+      || (productFilter === 'Ingresso do workshop' ? isWorkshopProduct(item.platform) : item.platform === productFilter);
     return matchesProduct && matchesDate(item.date, dateRange.start, dateRange.end);
   }), [dateRange.end, dateRange.start, productFilter, revenue]);
 
@@ -88,6 +89,9 @@ export function Dashboard() {
         <div className="flex w-full flex-col gap-3 xl:w-auto xl:items-end">
           <StatusBanner status={status} message={sheetMessage} />
           <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+            <select className="h-9 min-w-[220px] rounded-lg border border-slate-800 bg-slate-950 px-3 text-[12px] text-slate-300 outline-none focus:ring-1 focus:ring-blue-600" value={productFilter} onChange={(event) => setProductFilter(event.target.value)} aria-label="Produto">
+              {productOptions.map((item) => <option key={item}>{item}</option>)}
+            </select>
             <div className="grid grid-cols-2 gap-2">
               <input className="h-9 rounded-lg border border-slate-800 bg-slate-950 px-3 text-[12px] text-slate-300 outline-none focus:ring-1 focus:ring-blue-600" type="date" value={customStart} onChange={(event) => setCustomStart(event.target.value)} aria-label="Data inicial" />
               <input className="h-9 rounded-lg border border-slate-800 bg-slate-950 px-3 text-[12px] text-slate-300 outline-none focus:ring-1 focus:ring-blue-600" type="date" value={customEnd} onChange={(event) => setCustomEnd(event.target.value)} aria-label="Data final" />
@@ -118,7 +122,6 @@ export function Dashboard() {
             <button onClick={resetSegmentFilters} className="rounded-lg border border-slate-800 px-3 py-1.5 text-[11px] font-semibold text-slate-500 transition-colors hover:text-slate-100">Limpar</button>
           </div>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <Field label="Produto"><select className={inputClass} value={productFilter} onChange={(event) => setProductFilter(event.target.value)}>{productOptions.map((item) => <option key={item}>{item}</option>)}</select></Field>
             <Field label="Conta de anúncio"><select className={inputClass} value={accountFilter} onChange={(event) => setAccountFilter(event.target.value)}>{accountOptions.map((item) => <option key={item}>{item}</option>)}</select></Field>
           </div>
         </section>
@@ -292,6 +295,12 @@ function startOfDay(date: Date) {
 
 function toIso(date: Date) {
   return date.toISOString().slice(0, 10);
+}
+
+
+function isWorkshopProduct(product: string) {
+  const value = product.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  return /workshop|bussola|ingresso|live|aula/.test(value);
 }
 
 function unique(values: string[]) {

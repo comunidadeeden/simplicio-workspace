@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { motion } from 'motion/react';
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, CartesianGrid } from 'recharts';
+import { AreaChart, Area, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, CartesianGrid } from 'recharts';
 import { AlertTriangle, ArrowDownRight, ArrowUpRight, CalendarDays, Filter, PieChart as PieChartIcon, RefreshCw, Target, TrendingUp, Wallet } from 'lucide-react';
 import { type SalesRevenuePoint, type TrafficSpendPoint } from '../lib/finance';
 import { defaultIntegrationSettings, loadSheetData, subscribeIntegrationSettings } from '../lib/integrations';
@@ -150,10 +150,12 @@ export function Dashboard() {
                 <defs><linearGradient id="dashRevenue" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#22c55e" stopOpacity={0.16}/><stop offset="95%" stopColor="#22c55e" stopOpacity={0}/></linearGradient><linearGradient id="dashSpend" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#f59e0b" stopOpacity={0.14}/><stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/></linearGradient></defs>
                 <CartesianGrid stroke="#0f172a" vertical={false} />
                 <XAxis dataKey="name" stroke="#334155" fontSize={10} tickLine={false} axisLine={false} />
-                <YAxis hide />
-                <Tooltip contentStyle={{ backgroundColor: '#020617', border: '1px solid #1e293b', borderRadius: '8px', fontSize: '11px' }} formatter={(value) => money.format(Number(value))} />
-                <Area type="monotone" dataKey="receita" stroke="#22c55e" strokeWidth={2} fill="url(#dashRevenue)" />
-                <Area type="monotone" dataKey="midia" stroke="#f59e0b" strokeWidth={2} fill="url(#dashSpend)" />
+                <YAxis yAxisId="money" hide />
+                <YAxis yAxisId="cpa" hide orientation="right" />
+                <Tooltip contentStyle={{ backgroundColor: '#020617', border: '1px solid #1e293b', borderRadius: '8px', fontSize: '11px' }} formatter={(value, name) => [money.format(Number(value)), name === 'cpa' ? 'Custo por compra' : name === 'receita' ? 'Receita' : 'Mídia']} />
+                <Area yAxisId="money" type="monotone" dataKey="receita" stroke="#22c55e" strokeWidth={2} fill="url(#dashRevenue)" />
+                <Area yAxisId="money" type="monotone" dataKey="midia" stroke="#f59e0b" strokeWidth={2} fill="url(#dashSpend)" />
+                <Line yAxisId="cpa" type="monotone" dataKey="cpa" stroke="#38bdf8" strokeWidth={2} dot={false} activeDot={{ r: 4, fill: '#38bdf8' }} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -239,21 +241,21 @@ type FunnelStepData = {
 
 function FunnelChart({ steps }: { steps: FunnelStepData[] }) {
   return (
-    <div className="rounded-2xl border border-slate-900 bg-[#11130f] p-4">
-      <div className="grid gap-4 lg:grid-cols-[minmax(220px,1fr)_150px]">
-        <div className="relative space-y-2.5">
+    <div className="overflow-hidden rounded-2xl border border-blue-500/10 bg-slate-950/80 p-3">
+      <div className="grid gap-3 lg:grid-cols-[minmax(190px,1fr)_132px]">
+        <div className="relative space-y-2">
           {steps.map((step, index) => (
             <div key={step.label} className="relative flex justify-center">
               {index > 0 && <ConversionBadge value={step.conversion} />}
               <div
-                className="relative z-10 flex min-h-[58px] flex-col items-center justify-center border border-yellow-300/30 bg-yellow-300 px-4 py-2 text-center text-slate-950 shadow-[0_0_24px_rgba(250,204,21,0.16)]"
+                className="relative z-10 flex min-h-[48px] flex-col items-center justify-center border border-cyan-300/25 bg-gradient-to-b from-blue-400 to-cyan-500 px-3 py-1.5 text-center text-slate-950 shadow-[0_0_22px_rgba(56,189,248,0.16)]"
                 style={{
-                  width: `${Math.max(52, 100 - index * 9)}%`,
+                  width: `${Math.max(46, 88 - index * 7)}%`,
                   clipPath: 'polygon(5% 0, 95% 0, 88% 100%, 12% 100%)',
                 }}
               >
-                <span className="text-[10px] font-bold uppercase leading-none tracking-wide text-slate-700">{step.label}</span>
-                <span className="mt-1 font-mono text-2xl font-bold leading-none tracking-tighter">{number.format(Math.round(step.value))}</span>
+                <span className="text-[9px] font-bold uppercase leading-none tracking-wide text-slate-800">{step.label}</span>
+                <span className="mt-1 font-mono text-xl font-bold leading-none tracking-tighter">{number.format(Math.round(step.value))}</span>
               </div>
             </div>
           ))}
@@ -261,7 +263,7 @@ function FunnelChart({ steps }: { steps: FunnelStepData[] }) {
 
         <div className="flex flex-col justify-between gap-2">
           {steps.map((step) => (
-            <div key={step.label} className="min-h-[58px] border-l border-slate-800 pl-3">
+            <div key={step.label} className="min-h-[48px] border-l border-slate-800 pl-3">
               <div className="flex h-full flex-col justify-center">
                 <span className="text-[10px] font-semibold leading-tight text-slate-500">{step.costLabel}</span>
                 <span className="mt-1 font-mono text-[15px] font-bold leading-none text-slate-100">{step.costValue === null ? 'N/A' : money.format(step.costValue)}</span>
@@ -277,9 +279,9 @@ function FunnelChart({ steps }: { steps: FunnelStepData[] }) {
 
 function ConversionBadge({ value }: { value: number | null }) {
   return (
-    <div className="absolute -top-4 right-0 z-20 hidden items-center gap-2 md:flex">
-      <span className="h-px w-12 bg-slate-700" />
-      <span className="rounded-lg border border-yellow-300/30 bg-slate-950 px-2 py-1 font-mono text-[10px] font-bold text-slate-200 shadow-[0_0_16px_rgba(250,204,21,0.12)]">{value === null ? '0,00%' : formatPercent(value)}</span>
+    <div className="absolute right-1 top-1/2 z-20 hidden -translate-y-1/2 items-center gap-1 md:flex">
+      <span className="h-px w-5 bg-blue-500/40" />
+      <span className="rounded-lg border border-blue-400/25 bg-slate-950/95 px-2 py-1 font-mono text-[10px] font-bold text-blue-100 shadow-[0_0_16px_rgba(59,130,246,0.12)]">{value === null ? '0,00%' : formatPercent(value)}</span>
     </div>
   );
 }
@@ -322,16 +324,19 @@ function groupRevenueByProduct(revenue: SalesRevenuePoint[]) {
 }
 
 function mergeDailyFlow(revenue: SalesRevenuePoint[], traffic: TrafficSpendPoint[]) {
-  const groups: Record<string, { name: string; receita: number; midia: number }> = {};
+  const groups: Record<string, { name: string; receita: number; midia: number; pedidos: number }> = {};
   revenue.forEach((item) => {
-    groups[item.date] = groups[item.date] ?? { name: item.label, receita: 0, midia: 0 };
+    groups[item.date] = groups[item.date] ?? { name: item.label, receita: 0, midia: 0, pedidos: 0 };
     groups[item.date].receita += item.revenue;
+    groups[item.date].pedidos += item.orders;
   });
   traffic.forEach((item) => {
-    groups[item.date] = groups[item.date] ?? { name: item.label, receita: 0, midia: 0 };
+    groups[item.date] = groups[item.date] ?? { name: item.label, receita: 0, midia: 0, pedidos: 0 };
     groups[item.date].midia += item.spend;
   });
-  return Object.entries(groups).sort(([first], [second]) => first.localeCompare(second)).map(([, value]) => value);
+  return Object.entries(groups)
+    .sort(([first], [second]) => first.localeCompare(second))
+    .map(([, value]) => ({ ...value, cpa: value.pedidos ? value.midia / value.pedidos : 0 }));
 }
 
 function matchesDate(date: string, start: string, end: string) {

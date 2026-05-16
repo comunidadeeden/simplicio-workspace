@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import {
   AlertTriangle,
   BellRing,
+  CalendarDays,
   CheckCircle2,
   Copy,
   Edit3,
@@ -375,6 +376,22 @@ export function Settings() {
       <div className="rounded-xl border border-amber-500/15 bg-amber-500/[0.04] px-4 py-3 text-[12px] leading-5 text-amber-200">
         {testMessage}
       </div>
+
+      <section className="rounded-2xl border border-slate-900/60 bg-slate-950 p-5">
+        <div className="mb-5 flex items-start gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-800 bg-slate-900/50 text-blue-400"><CalendarDays size={15} /></div>
+          <div>
+            <h2 className="text-sm font-semibold text-slate-200">Configuração do ciclo</h2>
+            <p className="mt-1 text-[11px] leading-5 text-slate-500">Define onde cada venda entra: ingresso até sábado no horário de corte fica no ciclo que está fechando; depois disso entra no próximo ciclo.</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+          <Field label="Dia de virada"><select className={inputClass} value={settings.cycle.cutoffWeekday} onChange={(event) => setSettings((current) => ({ ...current, cycle: { ...current.cycle, cutoffWeekday: Number(event.target.value) } }))}><option value={6}>Sábado</option><option value={5}>Sexta</option><option value={0}>Domingo</option></select></Field>
+          <Field label="Horário de corte"><input className={inputClass} type="time" value={settings.cycle.cutoffTime} onChange={(event) => setSettings((current) => ({ ...current, cycle: { ...current.cycle, cutoffTime: event.target.value } }))} /></Field>
+          <Field label="Dias vendendo ingresso"><input className={inputClass} type="number" min={1} value={settings.cycle.acquisitionDays} onChange={(event) => setSettings((current) => ({ ...current, cycle: { ...current.cycle, acquisitionDays: Number(event.target.value) || 7 } }))} /></Field>
+          <Field label="Dias vendendo Éden"><input className={inputClass} type="number" min={1} value={settings.cycle.monetizationDays} onChange={(event) => setSettings((current) => ({ ...current, cycle: { ...current.cycle, monetizationDays: Number(event.target.value) || 7 } }))} /></Field>
+        </div>
+      </section>
 
       <section className="rounded-2xl border border-slate-900/60 bg-slate-950 p-5">
         <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">

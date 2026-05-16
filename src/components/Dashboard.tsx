@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { motion } from 'motion/react';
 import { AreaChart, Area, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, CartesianGrid } from 'recharts';
 import { AlertTriangle, ArrowDownRight, ArrowUpRight, CalendarDays, Filter, PieChart as PieChartIcon, RefreshCw, Target, TrendingUp, Wallet } from 'lucide-react';
+import { defaultCycleSettings, describeCycle, describeCycleWindows, getCurrentOperationCycle, getRecentCycles, isInEdenWindow, isInWorkshopWindow, type CycleSettings } from '../lib/cycles';
 import { type SalesRevenuePoint, type TrafficSpendPoint } from '../lib/finance';
 import { defaultIntegrationSettings, loadSheetData, subscribeIntegrationSettings } from '../lib/integrations';
 import { cn } from '../lib/utils';
@@ -24,6 +25,9 @@ export function Dashboard() {
   const [customStart, setCustomStart] = useState(defaultDateRange.start);
   const [customEnd, setCustomEnd] = useState(defaultDateRange.end);
   const [showFilters, setShowFilters] = useState(false);
+  const [cycleSettings, setCycleSettings] = useState<CycleSettings>(defaultCycleSettings);
+  const [cycleMode, setCycleMode] = useState<'operation' | 'cycle'>('operation');
+  const [selectedCycleId, setSelectedCycleId] = useState('');
 
   useEffect(() => {
     return subscribeIntegrationSettings(
@@ -33,6 +37,7 @@ export function Dashboard() {
           setRevenue(result.sales);
           setTraffic(result.traffic);
           setStatus(result.errors.length ? 'error' : 'ready');
+          setCycleSettings(settings.cycle);
           setSheetMessage(result.errors.length ? `Planilhas não carregadas: ${result.errors.join(' | ')}` : 'Dados reais sincronizados das planilhas.');
         });
       },
@@ -41,25 +46,54 @@ export function Dashboard() {
           setRevenue(result.sales);
           setTraffic(result.traffic);
           setStatus(result.errors.length ? 'error' : 'ready');
+          setCycleSettings(defaultIntegrationSettings.cycle);
           setSheetMessage(result.errors.length ? `Planilhas não carregadas: ${result.errors.join(' | ')}` : 'Dados reais sincronizados das planilhas.');
         });
       },
     );
   }, []);
 
+  const cycleOptions = useMemo(() => getRecentCycles(cycleSettings, 12), [cycleSettings]);
+  const operationCycle = useMemo(() => getCurrentOperationCycle(cycleSettings), [cycleSettings]);
+  const selectedCycle = useMemo(() => cycleOptions.find((cycle) => cycle.id === selectedCycleId) ?? cycleOptions[0], [cycleOptions, selectedCycleId]);
+  const activeCycleWindows = selectedCycle ? describeCycleWindows(selectedCycle) : null;
+  const operationWindows = { workshop: describeCycleWindows(operationCycle.workshop), eden: describeCycleWindows(operationCycle.eden) };
   const productOptions = useMemo(() => ['Workshop', 'Éden', ...unique(revenue.map((item) => item.platform)).filter((item) => !isWorkshopProduct(item) && !isEdenProduct(item))], [revenue]);
   const accountOptions = useMemo(() => ['Todas', ...unique(traffic.map((item) => item.account))], [traffic]);
   const dateRange = useMemo(() => ({ start: customStart, end: customEnd }), [customEnd, customStart]);
 
   const filteredRevenue = useMemo(() => revenue.filter((item) => {
     const matchesProduct = productFilters.length === 0 || productFilters.some((filter) => matchesProductFilter(item.platform, filter));
-    return matchesProduct && matchesDate(item.date, dateRange.start, dateRange.end);
-  }), [dateRange.end, dateRange.start, productFilters, revenue]);
+    if (!matchesProduct) return false;
+    if (cycleMode === 'operation') {
+      if (isWorkshopProduct(item.platform)) return isInWorkshopWindow(item.date, operationCycle.workshop, cycleSettings, item.occurredAt);
+      if (isEdenProduct(item.platform)) return isInEdenWindow(item.date, operationCycle.eden, cycleSettings, item.occurredAt);
+      return matchesDate(item.date, operationCycle.eden.start, operationCycle.workshop.workshopEnd);
+    }
+    if (!selectedCycle) return false;
+    if (isWorkshopProduct(item.platform)) return isInWorkshopWindow(item.date, selectedCycle, cycleSettings, item.occurredAt);
+    if (isEdenProduct(item.platform)) return isInEdenWindow(item.date, selectedCycle, cycleSettings, item.occurredAt);
+    return matchesDate(item.date, selectedCycle.start, selectedCycle.edenEnd);
+  }), [cycleMode, cycleSettings, operationCycle.eden, operationCycle.workshop, productFilters, revenue, selectedCycle]);
 
   const filteredTraffic = useMemo(() => traffic.filter((item) => {
     const matchesAccount = accountFilter === 'Todas' || item.account === accountFilter;
-    return matchesAccount && matchesDate(item.date, dateRange.start, dateRange.end);
-  }), [accountFilter, dateRange.end, dateRange.start, traffic]);
+    if (!matchesAccount) return false;
+    const cycle = cycleMode === 'operation' ? operationCycle.workshop : selectedCycle;
+    return cycle ? isInWorkshopWindow(item.date, cycle, cycleSettings) : matchesDate(item.date, dateRange.start, dateRange.end);
+  }), [accountFilter, cycleMode, cycleSettings, dateRange.end, dateRange.start, operationCycle.workshop, selectedCycle, traffic]);
+
+  const cycleScopedRevenue = useMemo(() => revenue.filter((item) => {
+    if (cycleMode === 'operation') {
+      if (isWorkshopProduct(item.platform)) return isInWorkshopWindow(item.date, operationCycle.workshop, cycleSettings, item.occurredAt);
+      if (isEdenProduct(item.platform)) return isInEdenWindow(item.date, operationCycle.eden, cycleSettings, item.occurredAt);
+      return matchesDate(item.date, operationCycle.eden.start, operationCycle.workshop.workshopEnd);
+    }
+    if (!selectedCycle) return false;
+    if (isWorkshopProduct(item.platform)) return isInWorkshopWindow(item.date, selectedCycle, cycleSettings, item.occurredAt);
+    if (isEdenProduct(item.platform)) return isInEdenWindow(item.date, selectedCycle, cycleSettings, item.occurredAt);
+    return matchesDate(item.date, selectedCycle.start, selectedCycle.edenEnd);
+  }), [cycleMode, cycleSettings, operationCycle.eden, operationCycle.workshop, revenue, selectedCycle]);
 
   const totalRevenue = sum(filteredRevenue.map((item) => item.revenue));
   const totalOrders = sum(filteredRevenue.map((item) => item.orders));
@@ -92,11 +126,13 @@ export function Dashboard() {
         <div className="flex w-full flex-col gap-3 xl:w-auto xl:items-end">
           <StatusBanner status={status} message={sheetMessage} />
           <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+            <select className="h-9 rounded-lg border border-slate-800 bg-slate-950 px-3 text-[12px] text-slate-300 outline-none focus:ring-1 focus:ring-blue-600" value={cycleMode} onChange={(event) => setCycleMode(event.target.value as 'operation' | 'cycle')} aria-label="Modo de ciclo">
+              <option value="operation">Operação atual</option>
+              <option value="cycle">Resultado do ciclo</option>
+            </select>
+            {cycleMode === 'cycle' && <select className="h-9 rounded-lg border border-slate-800 bg-slate-950 px-3 text-[12px] text-slate-300 outline-none focus:ring-1 focus:ring-blue-600" value={selectedCycle?.id ?? ''} onChange={(event) => setSelectedCycleId(event.target.value)} aria-label="Ciclo">{cycleOptions.map((cycle) => <option key={cycle.id} value={cycle.id}>{cycle.label}</option>)}</select>}
             <ProductFilterChips options={productOptions} selected={productFilters} onToggle={toggleProductFilter} onClear={() => setProductFilters([])} />
-            <div className="grid grid-cols-2 gap-2">
-              <input className="h-9 rounded-lg border border-slate-800 bg-slate-950 px-3 text-[12px] text-slate-300 outline-none focus:ring-1 focus:ring-blue-600" type="date" value={customStart} onChange={(event) => setCustomStart(event.target.value)} aria-label="Data inicial" />
-              <input className="h-9 rounded-lg border border-slate-800 bg-slate-950 px-3 text-[12px] text-slate-300 outline-none focus:ring-1 focus:ring-blue-600" type="date" value={customEnd} onChange={(event) => setCustomEnd(event.target.value)} aria-label="Data final" />
-            </div>
+
             <button
               type="button"
               onClick={() => setShowFilters((value) => !value)}
@@ -111,7 +147,7 @@ export function Dashboard() {
           </div>
           <div className="flex items-center gap-2 text-[11px] text-slate-600">
             <CalendarDays size={12} />
-            <span>{describeRange(dateRange.start, dateRange.end)}</span>
+            <span>{cycleMode === 'operation' ? `Workshop atual: ${operationWindows.workshop.workshop} | Éden atual: ${operationWindows.eden.eden}` : selectedCycle && activeCycleWindows ? `${describeCycle(selectedCycle)} | Workshop: ${activeCycleWindows.workshop} | Éden: ${activeCycleWindows.eden}` : describeRange(dateRange.start, dateRange.end)}</span>
           </div>
         </div>
       </div>
@@ -127,6 +163,11 @@ export function Dashboard() {
           </div>
         </section>
       )}
+
+      <section className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <CycleInfoCard title="Workshop" detail={cycleMode === 'operation' ? 'Captação em andamento' : 'Captação do ciclo selecionado'} range={cycleMode === 'operation' ? operationWindows.workshop.workshop : activeCycleWindows?.workshop ?? ''} value={number.format(sum(cycleScopedRevenue.filter((item) => isWorkshopProduct(item.platform)).map((item) => item.orders)))} />
+        <CycleInfoCard title="Éden" detail={cycleMode === 'operation' ? 'Monetização do ciclo anterior' : 'Monetização do ciclo selecionado'} range={cycleMode === 'operation' ? operationWindows.eden.eden : activeCycleWindows?.eden ?? ''} value={number.format(sum(cycleScopedRevenue.filter((item) => isEdenProduct(item.platform)).map((item) => item.orders)))} />
+      </section>
 
       <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
         <MetricCard label="Faturamento" value={money.format(totalRevenue)} icon={TrendingUp} tone="blue" />
@@ -194,6 +235,10 @@ export function Dashboard() {
       </section>
     </div>
   );
+}
+
+function CycleInfoCard({ title, detail, range, value }: { title: string; detail: string; range: string; value: string }) {
+  return <div className="rounded-xl border border-blue-500/10 bg-slate-950 p-4"><div className="flex items-start justify-between gap-4"><div><p className="text-[11px] font-semibold uppercase tracking-widest text-blue-400">{title}</p><p className="mt-1 text-[12px] font-medium text-slate-300">{detail}</p><p className="mt-2 text-[11px] text-slate-500">{range}</p></div><div className="text-right"><p className="font-mono text-2xl font-bold tracking-tighter text-slate-100">{value}</p><p className="text-[10px] uppercase tracking-widest text-slate-600">vendas</p></div></div></div>;
 }
 
 function StatusBanner({ status, message }: { status: LoadStatus; message: string }) {

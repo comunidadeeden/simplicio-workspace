@@ -7,6 +7,7 @@ import {
   type FirestoreError,
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { defaultCycleSettings, type CycleSettings } from './cycles';
 import { TRAFFIC_TAX_RATE, type FinanceExpense, type SalesRevenuePoint, type TrafficSpendPoint } from './finance';
 
 export type ConnectionStatus = 'Ativa' | 'Pendente' | 'Erro';
@@ -62,6 +63,7 @@ export interface IntegrationSettings {
   adAccounts: AdAccountConfig[];
   groupSources: GenericSheetConfig[];
   liveSources: GenericSheetConfig[];
+  cycle: CycleSettings;
   webhook: WebhookConfig;
 }
 
@@ -123,6 +125,7 @@ export const defaultIntegrationSettings: IntegrationSettings = {
   ],
   groupSources: [],
   liveSources: [],
+  cycle: defaultCycleSettings,
   webhook: {
     name: 'Atividades abertas - WhatsApp',
     url: '',
@@ -217,7 +220,9 @@ async function loadSales(config: SalesSheetConfig): Promise<SalesRevenuePoint[]>
   if (config.status !== 'Ativa' || !config.spreadsheetUrl.trim()) return [];
   const rows = await fetchRows(config.spreadsheetUrl, config.gid);
   return rows.map((row, index) => {
-    const date = parseDate(readColumn(row, config.dateColumn, ['data', 'date', 'created_at', 'data da venda'])) || new Date().toISOString().slice(0, 10);
+    const dateValue = readColumn(row, config.dateColumn, ['data', 'date', 'created_at', 'data da venda']);
+    const date = parseDate(dateValue) || new Date().toISOString().slice(0, 10);
+    const occurredAt = parseDateTime(dateValue);
     const revenue = parseMoney(readColumn(row, config.revenueColumn, ['valor', 'receita', 'faturamento', 'valor líquido', 'valor liquido', 'total']));
     const orders = config.orderColumn ? Number(readColumn(row, config.orderColumn, ['pedidos', 'orders', 'vendas']) || 1) : 1;
     return {
@@ -226,6 +231,7 @@ async function loadSales(config: SalesSheetConfig): Promise<SalesRevenuePoint[]>
       revenue,
       orders: Number.isFinite(orders) && orders > 0 ? orders : 1,
       platform: readColumn(row, config.productColumn, ['produto', 'plataforma', 'product']) || config.platform || `Venda ${index + 1}`,
+      occurredAt,
     };
   }).filter((point) => point.revenue > 0);
 }
@@ -423,6 +429,22 @@ function parseDate(value: string) {
   return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString().slice(0, 10);
 }
 
+
+function parseDateTime(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  const iso = trimmed.match(/^(\d{4}-\d{2}-\d{2})(?:[ T](\d{1,2}:\d{2})(?::\d{2})?)?/);
+  if (iso) return iso[2] ? `${iso[1]}T${iso[2]}:00` : `${iso[1]}T00:00:00`;
+  const br = trimmed.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})(?:\s+(\d{1,2}:\d{2})(?::\d{2})?)?/);
+  if (br) {
+    const year = br[3].length === 2 ? `20${br[3]}` : br[3];
+    const time = br[4] || '00:00';
+    return `${year}-${br[2].padStart(2, '0')}-${br[1].padStart(2, '0')}T${time}:00`;
+  }
+  const parsed = new Date(trimmed);
+  return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString();
+}
+
 function toTrafficExpense(spend: TrafficSpendPoint): FinanceExpense {
   const taxAmount = roundCurrency(spend.spend * TRAFFIC_TAX_RATE);
   return {
@@ -450,6 +472,7 @@ function mergeSettings(settings: Partial<IntegrationSettings>): IntegrationSetti
     adAccounts: settings.adAccounts?.length ? settings.adAccounts : defaultIntegrationSettings.adAccounts,
     groupSources: normalizeGenericSources(settings.groupSources),
     liveSources: normalizeGenericSources(settings.liveSources),
+    cycle: { ...defaultCycleSettings, ...settings.cycle },
     webhook: { ...defaultIntegrationSettings.webhook, ...settings.webhook },
   };
 }

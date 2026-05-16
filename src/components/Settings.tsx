@@ -8,17 +8,20 @@ import {
   Edit3,
   Link,
   Megaphone,
+  PlayCircle,
   Plus,
   RefreshCw,
   Save,
   Sheet,
   Trash2,
+  UsersRound,
   Webhook,
   X,
   type LucideIcon,
 } from 'lucide-react';
 import {
   defaultIntegrationSettings,
+  defaultGenericSheet,
   defaultSalesSource,
   inspectSheetConnection,
   loadSheetData,
@@ -26,13 +29,14 @@ import {
   subscribeIntegrationSettings,
   type AdAccountConfig,
   type ConnectionStatus,
+  type GenericSheetConfig,
   type IntegrationSettings,
   type SalesSheetConfig,
   type WebhookConfig,
 } from '../lib/integrations';
 import { cn } from '../lib/utils';
 
-type ConnectionType = 'sales' | 'ads' | 'webhook';
+type ConnectionType = 'sales' | 'ads' | 'group' | 'live' | 'webhook';
 type ModalMode = 'select' | ConnectionType;
 
 type ConnectionItem = {
@@ -61,6 +65,10 @@ const emptySalesSource: SalesSheetConfig = {
   spreadsheetUrl: '',
 };
 
+const emptyGenericSheet: GenericSheetConfig = {
+  ...defaultGenericSheet,
+};
+
 const emptyAdAccount: AdAccountConfig = {
   id: '',
   name: '',
@@ -81,6 +89,7 @@ export function Settings() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [salesDraft, setSalesDraft] = useState<SalesSheetConfig>(emptySalesSource);
   const [adDraft, setAdDraft] = useState<AdAccountConfig>(emptyAdAccount);
+  const [genericDraft, setGenericDraft] = useState<GenericSheetConfig>(emptyGenericSheet);
   const [webhookDraft, setWebhookDraft] = useState<WebhookConfig>(defaultIntegrationSettings.webhook);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [testState, setTestState] = useState<'idle' | 'testing'>('idle');
@@ -97,13 +106,14 @@ export function Settings() {
   useEffect(() => {
     const isSales = modalMode === 'sales';
     const isAds = modalMode === 'ads';
-    if (!isSales && !isAds) {
+    const isGeneric = modalMode === 'group' || modalMode === 'live';
+    if (!isSales && !isAds && !isGeneric) {
       setInspectState('idle');
       setDetectedColumns([]);
       return;
     }
 
-    const draft = isSales ? salesDraft : adDraft;
+    const draft = isSales ? salesDraft : isAds ? adDraft : genericDraft;
     if (!draft.spreadsheetUrl.trim()) {
       setInspectState('idle');
       setDetectedColumns([]);
@@ -114,12 +124,12 @@ export function Settings() {
     setInspectState('checking');
     setInspectMessage('Verificando planilha e lendo cabeçalhos...');
     const timeout = window.setTimeout(() => {
-      void inspectSheetConnection(isSales ? 'sales' : 'ads', draft.spreadsheetUrl, draft.gid).then((preview) => {
+      void inspectSheetConnection(isSales ? 'sales' : isAds ? 'ads' : 'generic', draft.spreadsheetUrl, draft.gid).then((preview) => {
         setDetectedColumns(preview.columns);
         setInspectState('ready');
-        const requiredColumnsFound = isSales
+        const requiredColumnsFound = isGeneric || (isSales
           ? Boolean(preview.detected.dateColumn && preview.detected.revenueColumn)
-          : Boolean(preview.detected.dateColumn && preview.detected.spendColumn);
+          : Boolean(preview.detected.dateColumn && preview.detected.spendColumn));
         setInspectMessage(requiredColumnsFound
           ? `Conexão pronta: ${preview.columns.length} colunas encontradas em ${preview.rowCount} linhas.`
           : `Essa aba foi lida, mas parece não ser uma planilha de ${isSales ? 'vendas' : 'anúncios'}.`);
@@ -127,7 +137,7 @@ export function Settings() {
           setSalesDraft((current) => current.spreadsheetUrl === draft.spreadsheetUrl && current.gid === draft.gid
             ? { ...current, ...preview.detected }
             : current);
-        } else {
+        } else if (isAds) {
           setAdDraft((current) => current.spreadsheetUrl === draft.spreadsheetUrl && current.gid === draft.gid
             ? { ...current, ...preview.detected }
             : current);
@@ -140,7 +150,7 @@ export function Settings() {
     }, 700);
 
     return () => window.clearTimeout(timeout);
-  }, [adDraft.gid, adDraft.spreadsheetUrl, modalMode, salesDraft.gid, salesDraft.spreadsheetUrl]);
+  }, [adDraft.gid, adDraft.spreadsheetUrl, genericDraft.gid, genericDraft.spreadsheetUrl, modalMode, salesDraft.gid, salesDraft.spreadsheetUrl]);
 
   const connections = useMemo<ConnectionItem[]>(() => {
     const sales = settings.salesSources.map((source): ConnectionItem => ({
@@ -163,6 +173,26 @@ export function Settings() {
       icon: Megaphone,
     }));
 
+    const groups = settings.groupSources.map((source): ConnectionItem => ({
+      id: source.id,
+      type: 'group',
+      title: source.name || 'Dados do grupo',
+      subtitle: 'Planilha do grupo',
+      status: source.status,
+      detail: source.spreadsheetUrl ? `Aba ${source.gid || '0'}` : 'Nenhuma URL configurada',
+      icon: UsersRound,
+    }));
+
+    const lives = settings.liveSources.map((source): ConnectionItem => ({
+      id: source.id,
+      type: 'live',
+      title: source.name || 'Dados da live',
+      subtitle: 'Planilha da live',
+      status: source.status,
+      detail: source.spreadsheetUrl ? `Aba ${source.gid || '0'}` : 'Nenhuma URL configurada',
+      icon: PlayCircle,
+    }));
+
     const webhook: ConnectionItem = {
       id: 'webhook',
       type: 'webhook',
@@ -173,7 +203,7 @@ export function Settings() {
       icon: Webhook,
     };
 
-    return [...sales, ...ads, webhook];
+    return [...sales, ...ads, ...groups, ...lives, webhook];
   }, [settings]);
 
   const activeConnections = connections.filter((item) => item.status === 'Ativa').length;
@@ -188,6 +218,8 @@ export function Settings() {
     setEditingId(null);
     if (type === 'sales') setSalesDraft({ ...emptySalesSource, id: `sales-${Date.now()}`, platform: 'Vendas' });
     if (type === 'ads') setAdDraft({ ...emptyAdAccount, id: `ads-${Date.now()}` });
+    if (type === 'group') setGenericDraft({ ...emptyGenericSheet, id: `group-${Date.now()}`, name: 'Grupo WhatsApp' });
+    if (type === 'live') setGenericDraft({ ...emptyGenericSheet, id: `live-${Date.now()}`, name: 'Live' });
     if (type === 'webhook') setWebhookDraft(settings.webhook);
     setModalMode(type);
   };
@@ -203,6 +235,16 @@ export function Settings() {
       const account = settings.adAccounts.find((entry) => entry.id === item.id);
       if (account) setAdDraft(account);
       setModalMode('ads');
+    }
+    if (item.type === 'group') {
+      const source = settings.groupSources.find((entry) => entry.id === item.id);
+      if (source) setGenericDraft(source);
+      setModalMode('group');
+    }
+    if (item.type === 'live') {
+      const source = settings.liveSources.find((entry) => entry.id === item.id);
+      if (source) setGenericDraft(source);
+      setModalMode('live');
     }
     if (item.type === 'webhook') {
       setWebhookDraft(settings.webhook);
@@ -234,6 +276,24 @@ export function Settings() {
       }));
       closeModal();
     }
+    if (modalMode === 'group') {
+      setSettings((current) => ({
+        ...current,
+        groupSources: editingId
+          ? current.groupSources.map((source) => (source.id === editingId ? genericDraft : source))
+          : [...current.groupSources, { ...genericDraft, id: genericDraft.id || `group-${Date.now()}` }],
+      }));
+      closeModal();
+    }
+    if (modalMode === 'live') {
+      setSettings((current) => ({
+        ...current,
+        liveSources: editingId
+          ? current.liveSources.map((source) => (source.id === editingId ? genericDraft : source))
+          : [...current.liveSources, { ...genericDraft, id: genericDraft.id || `live-${Date.now()}` }],
+      }));
+      closeModal();
+    }
     if (modalMode === 'webhook') {
       setSettings((current) => ({ ...current, webhook: webhookDraft }));
       closeModal();
@@ -248,6 +308,12 @@ export function Settings() {
     }
     if (item.type === 'ads') {
       setSettings((current) => ({ ...current, adAccounts: current.adAccounts.filter((account) => account.id !== item.id) }));
+    }
+    if (item.type === 'group') {
+      setSettings((current) => ({ ...current, groupSources: current.groupSources.filter((source) => source.id !== item.id) }));
+    }
+    if (item.type === 'live') {
+      setSettings((current) => ({ ...current, liveSources: current.liveSources.filter((source) => source.id !== item.id) }));
     }
     if (item.type === 'webhook') {
       setSettings((current) => ({ ...current, webhook: defaultIntegrationSettings.webhook }));
@@ -271,10 +337,10 @@ export function Settings() {
     const result = await loadSheetData(settings);
     setTestState('idle');
     if (result.errors.length) {
-      setTestMessage(`Leitura parcial: ${result.sales.length} vendas, ${result.traffic.length} linhas de tráfego. Pendências: ${result.errors.join(' | ')}`);
+      setTestMessage(`Leitura parcial: ${result.sales.length} vendas, ${result.traffic.length} linhas de tráfego, ${result.groups.length} linhas de grupo e ${result.lives.length} linhas de live. Pendências: ${result.errors.join(' | ')}`);
       return;
     }
-    setTestMessage(`Leitura OK: ${result.sales.length} vendas e ${result.traffic.length} linhas de tráfego importadas.`);
+    setTestMessage(`Leitura OK: ${result.sales.length} vendas, ${result.traffic.length} linhas de tráfego, ${result.groups.length} linhas de grupo e ${result.lives.length} linhas de live importadas.`);
   };
 
   return (
@@ -284,7 +350,7 @@ export function Settings() {
           <p className="text-[11px] font-semibold uppercase tracking-widest text-blue-400">Dados e automações</p>
           <h1 className="mt-2 text-xl font-display font-bold tracking-tight text-slate-100">Configurações</h1>
           <p className="mt-1 max-w-2xl text-[12px] leading-5 text-slate-500">
-            Gerencie conexões de vendas, contas de anúncios e webhooks em um só lugar.
+            Gerencie vendas, anúncios, dados do grupo, dados da live e webhooks em um só lugar.
           </p>
         </div>
 
@@ -337,8 +403,10 @@ export function Settings() {
           {modalMode === 'select' && <ConnectionTypePicker onSelect={openType} />}
           {modalMode === 'sales' && <SalesForm draft={salesDraft} onChange={setSalesDraft} inspectState={inspectState} inspectMessage={inspectMessage} columns={detectedColumns} />}
           {modalMode === 'ads' && <AdForm draft={adDraft} onChange={setAdDraft} inspectState={inspectState} inspectMessage={inspectMessage} columns={detectedColumns} />}
+          {modalMode === 'group' && <GenericSheetForm title="Dados do grupo" helper="Use essa conexão para importar entradas, presença, mensagens, engajamento ou qualquer dado do grupo que venha por planilha." draft={genericDraft} onChange={setGenericDraft} inspectState={inspectState} inspectMessage={inspectMessage} columns={detectedColumns} />}
+          {modalMode === 'live' && <GenericSheetForm title="Dados da live" helper="Use essa conexão para importar presença, pico de audiência, cliques, comentários, retenção ou qualquer dado da live." draft={genericDraft} onChange={setGenericDraft} inspectState={inspectState} inspectMessage={inspectMessage} columns={detectedColumns} />}
           {modalMode === 'webhook' && <WebhookForm draft={webhookDraft} onChange={setWebhookDraft} />}
-          {modalMode !== 'select' && <ModalActions onClose={closeModal} onSave={saveDraft} disabled={!canSave(modalMode, salesDraft, adDraft, webhookDraft)} />}
+          {modalMode !== 'select' && <ModalActions onClose={closeModal} onSave={saveDraft} disabled={!canSave(modalMode, salesDraft, adDraft, genericDraft, webhookDraft)} />}
         </ConnectionModal>
       )}
     </div>
@@ -349,9 +417,11 @@ function ConnectionTypePicker({ onSelect }: { onSelect: (type: ConnectionType) =
   const items: Array<{ type: ConnectionType; title: string; description: string; icon: LucideIcon }> = [
     { type: 'sales', title: 'Vendas', description: 'Receita, pedidos, produto e data da venda.', icon: Sheet },
     { type: 'ads', title: 'Conta de anúncio', description: 'Gasto de mídia por conta, campanha e data.', icon: Megaphone },
+    { type: 'group', title: 'Dados do grupo', description: 'Entrada, presença e engajamento no grupo.', icon: UsersRound },
+    { type: 'live', title: 'Dados da live', description: 'Audiência, presença, cliques e retenção.', icon: PlayCircle },
     { type: 'webhook', title: 'Webhook', description: 'Automação para enviar atividades abertas.', icon: Webhook },
   ];
-  return <div className="grid grid-cols-1 gap-3 md:grid-cols-3">{items.map((item) => { const Icon = item.icon; return <button key={item.type} onClick={() => onSelect(item.type)} className="rounded-xl border border-slate-900 bg-slate-950 p-4 text-left transition-colors hover:border-blue-500/40"><div className="mb-4 flex h-9 w-9 items-center justify-center rounded-lg border border-slate-800 bg-slate-900/50 text-blue-400"><Icon size={16} /></div><p className="text-sm font-semibold text-slate-200">{item.title}</p><p className="mt-2 text-[11px] leading-5 text-slate-500">{item.description}</p></button>; })}</div>;
+  return <div className="grid grid-cols-1 gap-3 md:grid-cols-5">{items.map((item) => { const Icon = item.icon; return <button key={item.type} onClick={() => onSelect(item.type)} className="rounded-xl border border-slate-900 bg-slate-950 p-4 text-left transition-colors hover:border-blue-500/40"><div className="mb-4 flex h-9 w-9 items-center justify-center rounded-lg border border-slate-800 bg-slate-900/50 text-blue-400"><Icon size={16} /></div><p className="text-sm font-semibold text-slate-200">{item.title}</p><p className="mt-2 text-[11px] leading-5 text-slate-500">{item.description}</p></button>; })}</div>;
 }
 
 function SalesForm({ draft, onChange, inspectState, inspectMessage, columns }: { draft: SalesSheetConfig; onChange: (draft: SalesSheetConfig) => void; inspectState: InspectState; inspectMessage: string; columns: string[] }) {
@@ -362,6 +432,11 @@ function SalesForm({ draft, onChange, inspectState, inspectMessage, columns }: {
 function AdForm({ draft, onChange, inspectState, inspectMessage, columns }: { draft: AdAccountConfig; onChange: (draft: AdAccountConfig) => void; inspectState: InspectState; inspectMessage: string; columns: string[] }) {
   const updateUrl = (value: string) => onChange({ ...draft, spreadsheetUrl: value, gid: extractGid(value, draft.gid) });
   return <div className="space-y-4"><div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_180px_160px]"><Field label="Nome da conta"><input className={inputClass} value={draft.name} placeholder="Meta Ads principal" onChange={(event) => onChange({ ...draft, name: event.target.value })} /></Field><Field label="Plataforma"><select className={inputClass} value={draft.platform} onChange={(event) => onChange({ ...draft, platform: event.target.value })}><option>Meta Ads</option><option>Google Ads</option><option>TikTok Ads</option><option>LinkedIn Ads</option></select></Field><Field label="Status"><StatusSelect value={draft.status} onChange={(status) => onChange({ ...draft, status })} /></Field></div><Field label="URL da aba de anúncios"><UrlField value={draft.spreadsheetUrl} onChange={updateUrl} /></Field><SheetInspection state={inspectState} message={inspectMessage} columns={columns} /></div>;
+}
+
+function GenericSheetForm({ title, helper, draft, onChange, inspectState, inspectMessage, columns }: { title: string; helper: string; draft: GenericSheetConfig; onChange: (draft: GenericSheetConfig) => void; inspectState: InspectState; inspectMessage: string; columns: string[] }) {
+  const updateUrl = (value: string) => onChange({ ...draft, spreadsheetUrl: value, gid: extractGid(value, draft.gid) });
+  return <div className="space-y-4"><div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_160px]"><Field label="Nome da fonte"><input className={inputClass} value={draft.name} placeholder={title} onChange={(event) => onChange({ ...draft, name: event.target.value })} /></Field><Field label="Status"><StatusSelect value={draft.status} onChange={(status) => onChange({ ...draft, status })} /></Field></div><Field label="URL da aba"><UrlField value={draft.spreadsheetUrl} onChange={updateUrl} /></Field><p className="rounded-lg border border-slate-900 bg-slate-950/70 px-3 py-2 text-[11px] leading-5 text-slate-500">{helper} Cole a URL com a aba correta aberta. A aplicação lê todas as colunas automaticamente.</p><SheetInspection state={inspectState} message={inspectMessage} columns={columns} /></div>;
 }
 
 
@@ -424,18 +499,23 @@ function getModalTitle(mode: ModalMode, editingId: string | null) {
   const action = editingId ? 'Editar' : 'Criar';
   if (mode === 'sales') return `${action} conexão de vendas`;
   if (mode === 'ads') return `${action} conta de anúncio`;
+  if (mode === 'group') return `${action} dados do grupo`;
+  if (mode === 'live') return `${action} dados da live`;
   return `${action} webhook`;
 }
 
 function getTypeLabel(type: ConnectionType) {
   if (type === 'sales') return 'Vendas';
   if (type === 'ads') return 'Anúncios';
+  if (type === 'group') return 'Grupo';
+  if (type === 'live') return 'Live';
   return 'Webhook';
 }
 
-function canSave(mode: ModalMode, sales: SalesSheetConfig, ad: AdAccountConfig, webhook: WebhookConfig) {
+function canSave(mode: ModalMode, sales: SalesSheetConfig, ad: AdAccountConfig, generic: GenericSheetConfig, webhook: WebhookConfig) {
   if (mode === 'sales') return Boolean(sales.platform.trim() && sales.spreadsheetUrl.trim() && sales.dateColumn.trim() && sales.revenueColumn.trim());
   if (mode === 'ads') return Boolean(ad.name.trim() && ad.spreadsheetUrl.trim() && ad.dateColumn.trim() && ad.spendColumn.trim());
+  if (mode === 'group' || mode === 'live') return Boolean(generic.name.trim() && generic.spreadsheetUrl.trim());
   if (mode === 'webhook') return Boolean(webhook.name.trim() && webhook.url.trim());
   return false;
 }

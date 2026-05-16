@@ -47,10 +47,21 @@ export interface WebhookConfig {
   includeDueDates: boolean;
 }
 
+export interface GenericSheetConfig {
+  id: string;
+  name: string;
+  spreadsheetUrl: string;
+  sheetName: string;
+  gid: string;
+  status: ConnectionStatus;
+}
+
 export interface IntegrationSettings {
   salesSources: SalesSheetConfig[];
   sales?: SalesSheetConfig;
   adAccounts: AdAccountConfig[];
+  groupSources: GenericSheetConfig[];
+  liveSources: GenericSheetConfig[];
   webhook: WebhookConfig;
 }
 
@@ -64,6 +75,8 @@ export interface SheetInspectionResult {
 export interface SheetLoadResult {
   sales: SalesRevenuePoint[];
   traffic: TrafficSpendPoint[];
+  groups: Record<string, string>[];
+  lives: Record<string, string>[];
   trafficExpenses: FinanceExpense[];
   errors: string[];
 }
@@ -79,6 +92,15 @@ export const defaultSalesSource: SalesSheetConfig = {
   orderColumn: '',
   productColumn: 'produto',
   statusColumn: 'status',
+  status: 'Ativa',
+};
+
+export const defaultGenericSheet: GenericSheetConfig = {
+  id: '',
+  name: '',
+  spreadsheetUrl: '',
+  sheetName: 'Página 1',
+  gid: '0',
   status: 'Ativa',
 };
 
@@ -99,6 +121,8 @@ export const defaultIntegrationSettings: IntegrationSettings = {
       status: 'Ativa',
     },
   ],
+  groupSources: [],
+  liveSources: [],
   webhook: {
     name: 'Atividades abertas - WhatsApp',
     url: '',
@@ -131,12 +155,12 @@ export async function saveIntegrationSettings(settings: IntegrationSettings) {
   await setDoc(settingsRef, { ...settings, updatedAt: serverTimestamp() }, { merge: true });
 }
 
-export async function inspectSheetConnection(type: 'sales' | 'ads', url: string, gid: string): Promise<SheetInspectionResult> {
+export async function inspectSheetConnection(type: 'sales' | 'ads' | 'generic', url: string, gid: string): Promise<SheetInspectionResult> {
   const { columns, rows } = await fetchSheetTable(url, gid);
   return {
     columns,
     rowCount: rows.length,
-    detected: type === 'ads' ? detectAdColumns(columns) : detectSalesColumns(columns),
+    detected: type === 'ads' ? detectAdColumns(columns) : type === 'sales' ? detectSalesColumns(columns) : {},
   };
 }
 
@@ -160,10 +184,30 @@ export async function loadSheetData(settings: IntegrationSettings): Promise<Shee
       })),
   );
 
+  const groupLists = await Promise.all(
+    settings.groupSources
+      .filter((source) => source.status === 'Ativa' && source.spreadsheetUrl.trim())
+      .map((source) => loadGenericSheet(source).catch((error) => {
+        errors.push(getErrorMessage(source.name || 'Grupo', error));
+        return [] as Record<string, string>[];
+      })),
+  );
+
+  const liveLists = await Promise.all(
+    settings.liveSources
+      .filter((source) => source.status === 'Ativa' && source.spreadsheetUrl.trim())
+      .map((source) => loadGenericSheet(source).catch((error) => {
+        errors.push(getErrorMessage(source.name || 'Live', error));
+        return [] as Record<string, string>[];
+      })),
+  );
+
   const traffic = trafficLists.flat();
   return {
     sales: salesLists.flat(),
     traffic,
+    groups: groupLists.flat(),
+    lives: liveLists.flat(),
     trafficExpenses: traffic.map(toTrafficExpense),
     errors,
   };
@@ -184,6 +228,10 @@ async function loadSales(config: SalesSheetConfig): Promise<SalesRevenuePoint[]>
       platform: readColumn(row, config.productColumn, ['produto', 'plataforma', 'product']) || config.platform || `Venda ${index + 1}`,
     };
   }).filter((point) => point.revenue > 0);
+}
+
+async function loadGenericSheet(config: GenericSheetConfig) {
+  return fetchRows(config.spreadsheetUrl, config.gid);
 }
 
 async function loadTraffic(config: AdAccountConfig): Promise<TrafficSpendPoint[]> {
@@ -400,8 +448,18 @@ function mergeSettings(settings: Partial<IntegrationSettings>): IntegrationSetti
   return {
     salesSources: normalizeSalesSources(settings),
     adAccounts: settings.adAccounts?.length ? settings.adAccounts : defaultIntegrationSettings.adAccounts,
+    groupSources: normalizeGenericSources(settings.groupSources),
+    liveSources: normalizeGenericSources(settings.liveSources),
     webhook: { ...defaultIntegrationSettings.webhook, ...settings.webhook },
   };
+}
+
+function normalizeGenericSources(sources?: GenericSheetConfig[]) {
+  return (sources ?? []).map((source, index) => ({
+    ...defaultGenericSheet,
+    ...source,
+    id: source.id || `sheet-${index + 1}`,
+  }));
 }
 
 function normalizeSalesSources(settings: Partial<IntegrationSettings>): SalesSheetConfig[] {

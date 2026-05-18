@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { motion } from 'motion/react';
 import { AreaChart, Area, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, CartesianGrid } from 'recharts';
 import { AlertTriangle, ArrowDownRight, ArrowUpRight, CalendarDays, Filter, PieChart as PieChartIcon, RefreshCw, Target, TrendingUp, Wallet } from 'lucide-react';
-import { defaultCycleSettings, describeCycle, describeCycleWindows, getCycleLabel, getCurrentOperationCycle, getRecentCycles, isInEdenWindow, isInWorkshopWindow, type CycleSettings } from '../lib/cycles';
 import { type SalesRevenuePoint, type TrafficSpendPoint } from '../lib/finance';
 import { defaultIntegrationSettings, loadSheetData, subscribeIntegrationSettings } from '../lib/integrations';
 import { cn } from '../lib/utils';
@@ -11,7 +10,7 @@ const money = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL
 const number = new Intl.NumberFormat('pt-BR');
 const COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#38bdf8', '#a78bfa', '#64748b'];
 const inputClass = 'h-9 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 text-[12px] text-slate-300 outline-none focus:ring-1 focus:ring-blue-600 disabled:cursor-not-allowed disabled:opacity-40';
-const defaultDateRange = getCurrentCycleRange();
+const defaultDateRange = getDefaultDateRange();
 
 type LoadStatus = 'loading' | 'ready' | 'error';
 
@@ -25,9 +24,6 @@ export function Dashboard() {
   const [customStart, setCustomStart] = useState(defaultDateRange.start);
   const [customEnd, setCustomEnd] = useState(defaultDateRange.end);
   const [showFilters, setShowFilters] = useState(false);
-  const [cycleSettings, setCycleSettings] = useState<CycleSettings>(defaultCycleSettings);
-  const [cycleMode, setCycleMode] = useState<'operation' | 'cycle'>('operation');
-  const [selectedCycleId, setSelectedCycleId] = useState('');
 
   useEffect(() => {
     return subscribeIntegrationSettings(
@@ -37,7 +33,6 @@ export function Dashboard() {
           setRevenue(result.sales);
           setTraffic(result.traffic);
           setStatus(result.errors.length ? 'error' : 'ready');
-          setCycleSettings(settings.cycle);
           setSheetMessage(result.errors.length ? `Planilhas não carregadas: ${result.errors.join(' | ')}` : 'Dados reais sincronizados das planilhas.');
         });
       },
@@ -46,61 +41,25 @@ export function Dashboard() {
           setRevenue(result.sales);
           setTraffic(result.traffic);
           setStatus(result.errors.length ? 'error' : 'ready');
-          setCycleSettings(defaultIntegrationSettings.cycle);
           setSheetMessage(result.errors.length ? `Planilhas não carregadas: ${result.errors.join(' | ')}` : 'Dados reais sincronizados das planilhas.');
         });
       },
     );
   }, []);
 
-  const cycleOptions = useMemo(() => getRecentCycles(cycleSettings, 12), [cycleSettings]);
-  const operationCycle = useMemo(() => getCurrentOperationCycle(cycleSettings), [cycleSettings]);
-  const selectedCycle = useMemo(() => cycleOptions.find((cycle) => cycle.id === selectedCycleId) ?? cycleOptions[0], [cycleOptions, selectedCycleId]);
-  const activeCycleWindows = selectedCycle ? describeCycleWindows(selectedCycle) : null;
-  const operationWindows = { workshop: describeCycleWindows(operationCycle.workshop), eden: describeCycleWindows(operationCycle.eden) };
   const productOptions = useMemo(() => ['Workshop', 'Éden', ...unique(revenue.map((item) => item.platform)).filter((item) => !isWorkshopProduct(item) && !isEdenProduct(item))], [revenue]);
   const accountOptions = useMemo(() => ['Todas', ...unique(traffic.map((item) => item.account))], [traffic]);
   const dateRange = useMemo(() => ({ start: customStart, end: customEnd }), [customEnd, customStart]);
 
   const filteredRevenue = useMemo(() => revenue.filter((item) => {
     const matchesProduct = productFilters.length === 0 || productFilters.some((filter) => matchesProductFilter(item.platform, filter));
-    if (!matchesProduct) return false;
-    if (cycleMode === 'operation') {
-      if (isWorkshopProduct(item.platform)) return isInWorkshopWindow(item.date, operationCycle.workshop, cycleSettings, item.occurredAt);
-      if (isEdenProduct(item.platform)) return isInEdenWindow(item.date, operationCycle.eden, cycleSettings, item.occurredAt);
-      return matchesDate(item.date, operationCycle.eden.start, operationCycle.workshop.workshopEnd);
-    }
-    if (!selectedCycle) return false;
-    if (isWorkshopProduct(item.platform)) return isInWorkshopWindow(item.date, selectedCycle, cycleSettings, item.occurredAt);
-    if (isEdenProduct(item.platform)) return isInEdenWindow(item.date, selectedCycle, cycleSettings, item.occurredAt);
-    return matchesDate(item.date, selectedCycle.start, selectedCycle.edenEnd);
-  }), [cycleMode, cycleSettings, operationCycle.eden, operationCycle.workshop, productFilters, revenue, selectedCycle]);
+    return matchesProduct && matchesDate(item.date, dateRange.start, dateRange.end);
+  }), [dateRange.end, dateRange.start, productFilters, revenue]);
 
   const filteredTraffic = useMemo(() => traffic.filter((item) => {
     const matchesAccount = accountFilter === 'Todas' || item.account === accountFilter;
-    if (!matchesAccount) return false;
-    const cycle = cycleMode === 'operation' ? operationCycle.workshop : selectedCycle;
-    return cycle ? isInWorkshopWindow(item.date, cycle, cycleSettings) : matchesDate(item.date, dateRange.start, dateRange.end);
-  }), [accountFilter, cycleMode, cycleSettings, dateRange.end, dateRange.start, operationCycle.workshop, selectedCycle, traffic]);
-
-  const cycleScopedRevenue = useMemo(() => revenue.filter((item) => {
-    if (cycleMode === 'operation') {
-      if (isWorkshopProduct(item.platform)) return isInWorkshopWindow(item.date, operationCycle.workshop, cycleSettings, item.occurredAt);
-      if (isEdenProduct(item.platform)) return isInEdenWindow(item.date, operationCycle.eden, cycleSettings, item.occurredAt);
-      return matchesDate(item.date, operationCycle.eden.start, operationCycle.workshop.workshopEnd);
-    }
-    if (!selectedCycle) return false;
-    if (isWorkshopProduct(item.platform)) return isInWorkshopWindow(item.date, selectedCycle, cycleSettings, item.occurredAt);
-    if (isEdenProduct(item.platform)) return isInEdenWindow(item.date, selectedCycle, cycleSettings, item.occurredAt);
-    return matchesDate(item.date, selectedCycle.start, selectedCycle.edenEnd);
-  }), [cycleMode, cycleSettings, operationCycle.eden, operationCycle.workshop, revenue, selectedCycle]);
-
-  const workshopCycleRevenue = cycleScopedRevenue.filter((item) => isWorkshopProduct(item.platform));
-  const edenCycleRevenue = cycleScopedRevenue.filter((item) => isEdenProduct(item.platform));
-  const workshopCycleOrders = sum(workshopCycleRevenue.map((item) => item.orders));
-  const edenCycleOrders = sum(edenCycleRevenue.map((item) => item.orders));
-  const workshopCycleMoney = sum(workshopCycleRevenue.map((item) => item.revenue));
-  const edenCycleMoney = sum(edenCycleRevenue.map((item) => item.revenue));
+    return matchesAccount && matchesDate(item.date, dateRange.start, dateRange.end);
+  }), [accountFilter, dateRange.end, dateRange.start, traffic]);
 
   const totalRevenue = sum(filteredRevenue.map((item) => item.revenue));
   const totalOrders = sum(filteredRevenue.map((item) => item.orders));
@@ -133,10 +92,11 @@ export function Dashboard() {
         <div className="flex w-full flex-col gap-3 xl:w-auto xl:items-end">
           <StatusBanner status={status} message={sheetMessage} />
           <div className="flex flex-wrap items-center gap-2 xl:justify-end">
-            <select className="h-9 rounded-lg border border-slate-800 bg-slate-950 px-3 text-[12px] text-slate-300 outline-none focus:ring-1 focus:ring-blue-600" value={cycleMode} onChange={(event) => setCycleMode(event.target.value as 'operation' | 'cycle')} aria-label="Modo de ciclo">
-              <option value="operation">Operação atual</option>
-              <option value="cycle">Ciclo selecionado</option>
-            </select>
+            <DateRangeControl start={customStart} end={customEnd} onStart={setCustomStart} onEnd={setCustomEnd} onReset={() => {
+              const range = getDefaultDateRange();
+              setCustomStart(range.start);
+              setCustomEnd(range.end);
+            }} />
             <ProductFilterChips options={productOptions} selected={productFilters} onToggle={toggleProductFilter} onClear={() => setProductFilters([])} />
 
             <button
@@ -153,24 +113,10 @@ export function Dashboard() {
           </div>
           <div className="flex items-center gap-2 text-[11px] text-slate-600">
             <CalendarDays size={12} />
-            <span>{cycleMode === 'operation' ? `Operação atual | Workshop: ${operationWindows.workshop.workshop} | Éden: ${operationWindows.eden.eden}` : selectedCycle && activeCycleWindows ? `${getCycleLabel(selectedCycle)} | Workshop: ${activeCycleWindows.workshop} | Éden: ${activeCycleWindows.eden}` : describeRange(dateRange.start, dateRange.end)}</span>
+            <span>{describeRange(dateRange.start, dateRange.end)}</span>
           </div>
         </div>
       </div>
-
-      <CycleCalendarPicker
-        cycles={cycleOptions}
-        selectedId={cycleMode === 'operation' ? 'operation' : selectedCycle?.id ?? ''}
-        operationLabel={`Atual: ${operationWindows.workshop.workshop}`}
-        onSelect={(id) => {
-          if (id === 'operation') {
-            setCycleMode('operation');
-            return;
-          }
-          setCycleMode('cycle');
-          setSelectedCycleId(id);
-        }}
-      />
 
       {showFilters && (
         <section className="rounded-2xl border border-slate-900/60 bg-slate-950 p-4">
@@ -183,12 +129,6 @@ export function Dashboard() {
           </div>
         </section>
       )}
-
-      <section className="grid grid-cols-1 gap-3 md:grid-cols-2">
-        <CycleInfoCard title="Workshop" detail={cycleMode === 'operation' ? 'Captação em andamento' : 'Captação do ciclo selecionado'} range={cycleMode === 'operation' ? operationWindows.workshop.workshop : activeCycleWindows?.workshop ?? ''} value={number.format(workshopCycleOrders)} amount={money.format(workshopCycleMoney)} />
-        <CycleInfoCard title="Éden" detail={cycleMode === 'operation' ? 'Monetização do ciclo anterior' : 'Monetização do ciclo selecionado'} range={cycleMode === 'operation' ? operationWindows.eden.eden : activeCycleWindows?.eden ?? ''} value={number.format(edenCycleOrders)} amount={money.format(edenCycleMoney)} />
-      </section>
-      <p className="-mt-3 text-[11px] text-slate-600">Regra do ciclo: sábado às 09:00. Quando a planilha não informa horário, vendas do sábado são tratadas como antes das 09:00 e entram no ciclo que está fechando.</p>
 
       <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
         <MetricCard label="Faturamento" value={money.format(totalRevenue)} icon={TrendingUp} tone="blue" />
@@ -223,7 +163,7 @@ export function Dashboard() {
           </div>
         </Panel>
 
-        <Panel className="xl:col-span-4" title="Funil do ciclo" description="Etapas principais do tráfego até as compras.">
+        <Panel className="xl:col-span-4" title="Funil do período" description="Etapas principais do tráfego até as compras no período.">
           <FunnelChart steps={funnelData} />
         </Panel>
       </section>
@@ -258,65 +198,36 @@ export function Dashboard() {
   );
 }
 
-function CycleInfoCard({ title, detail, range, value, amount }: { title: string; detail: string; range: string; value: string; amount: string }) {
-  return <div className="rounded-xl border border-blue-500/10 bg-slate-950 p-4"><div className="flex items-start justify-between gap-4"><div><p className="text-[11px] font-semibold uppercase tracking-widest text-blue-400">{title}</p><p className="mt-1 text-[12px] font-medium text-slate-300">{detail}</p><p className="mt-2 text-[11px] text-slate-500">{range}</p><p className="mt-2 font-mono text-[12px] font-semibold text-slate-300">{amount}</p></div><div className="text-right"><p className="font-mono text-2xl font-bold tracking-tighter text-slate-100">{value}</p><p className="text-[10px] uppercase tracking-widest text-slate-600">vendas</p></div></div></div>;
-}
-
 function StatusBanner({ status, message }: { status: LoadStatus; message: string }) {
   const tone = status === 'ready' ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-200' : status === 'loading' ? 'border-slate-800 bg-slate-950 text-slate-400' : 'border-amber-500/20 bg-amber-500/10 text-amber-200';
   return <div className={cn('max-w-xl rounded-lg border px-3 py-2 text-[11px] font-semibold leading-5', tone)}>{status === 'loading' && <RefreshCw size={12} className="mr-2 inline animate-spin" />}{message}</div>;
 }
 
 
-function CycleCalendarPicker({
-  cycles,
-  selectedId,
-  operationLabel,
-  onSelect,
+
+function DateRangeControl({
+  start,
+  end,
+  onStart,
+  onEnd,
+  onReset,
 }: {
-  cycles: ReturnType<typeof getRecentCycles>;
-  selectedId: string;
-  operationLabel: string;
-  onSelect: (id: string) => void;
+  start: string;
+  end: string;
+  onStart: (value: string) => void;
+  onEnd: (value: string) => void;
+  onReset: () => void;
 }) {
   return (
-    <section className="rounded-2xl border border-slate-900/60 bg-slate-950 p-4">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-[12px] font-semibold text-slate-200">
-          <CalendarDays size={14} className="text-blue-400" />
-          Ciclos do lançamento
-        </div>
-        <button
-          onClick={() => onSelect('operation')}
-          className={cn(
-            'rounded-lg border px-3 py-1.5 text-[11px] font-semibold transition-colors',
-            selectedId === 'operation' ? 'border-blue-500/40 bg-blue-500/10 text-blue-300' : 'border-slate-800 text-slate-500 hover:text-slate-200',
-          )}
-        >
-          {operationLabel}
-        </button>
-      </div>
-      <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
-        {cycles.slice(0, 8).map((cycle) => {
-          const windows = describeCycleWindows(cycle);
-          const selected = selectedId === cycle.id;
-          return (
-            <button
-              key={cycle.id}
-              onClick={() => onSelect(cycle.id)}
-              className={cn(
-                'rounded-xl border p-3 text-left transition-colors',
-                selected ? 'border-blue-500/40 bg-blue-500/10' : 'border-slate-900 bg-slate-950/70 hover:border-slate-800',
-              )}
-            >
-              <p className={cn('text-[12px] font-bold', selected ? 'text-blue-300' : 'text-slate-200')}>{getCycleLabel(cycle)}</p>
-              <p className="mt-2 text-[10px] leading-4 text-slate-500">Workshop: {windows.workshop}</p>
-              <p className="text-[10px] leading-4 text-slate-500">Éden: {windows.eden}</p>
-            </button>
-          );
-        })}
-      </div>
-    </section>
+    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 p-1.5">
+      <CalendarDays size={14} className="ml-1 text-blue-400" />
+      <input className="h-7 rounded-md border border-slate-800 bg-slate-950 px-2 text-[11px] text-slate-300 outline-none focus:ring-1 focus:ring-blue-600" type="date" value={start} onChange={(event) => onStart(event.target.value)} aria-label="Início do período" />
+      <span className="text-[10px] text-slate-600">até</span>
+      <input className="h-7 rounded-md border border-slate-800 bg-slate-950 px-2 text-[11px] text-slate-300 outline-none focus:ring-1 focus:ring-blue-600" type="date" value={end} onChange={(event) => onEnd(event.target.value)} aria-label="Fim do período" />
+      <button type="button" onClick={onReset} className="rounded-md px-2 py-1 text-[10px] font-semibold text-blue-300 transition-colors hover:bg-blue-500/10">
+        Último sábado até hoje
+      </button>
+    </div>
   );
 }
 
@@ -464,12 +375,12 @@ function matchesDate(date: string, start: string, end: string) {
 
 function describeRange(start: string, end: string) {
   if (!start && !end) return 'Sem recorte de data';
-  const currentCycle = getCurrentCycleRange();
-  const label = start === currentCycle.start && end === currentCycle.end ? 'Ciclo Atual: ' : '';
+  const currentRange = getDefaultDateRange();
+  const label = start === currentRange.start && end === currentRange.end ? 'Período atual: ' : '';
   return `${label}${start ? formatDate(start) : 'Início'} - ${end ? formatDate(end) : 'Hoje'}`;
 }
 
-function getCurrentCycleRange() {
+function getDefaultDateRange() {
   const end = startOfDay(new Date());
   return { start: toIso(lastSaturday(end)), end: toIso(end) };
 }

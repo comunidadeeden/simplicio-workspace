@@ -93,13 +93,13 @@ export function Dashboard() {
           <div className="flex justify-start xl:justify-end">
             <StatusBanner status={status} message={sheetMessage} />
           </div>
-          <div className="grid gap-2 lg:grid-cols-[auto_auto_40px] xl:justify-end">
+          <div className="grid gap-2 lg:grid-cols-[220px_auto_40px] xl:justify-end">
+            <ProductDropdown options={productOptions} selected={productFilters} onToggle={toggleProductFilter} onClear={() => setProductFilters([])} />
             <DateRangeControl start={customStart} end={customEnd} onStart={setCustomStart} onEnd={setCustomEnd} onReset={() => {
               const range = getDefaultDateRange();
               setCustomStart(range.start);
               setCustomEnd(range.end);
             }} />
-            <ProductFilterChips options={productOptions} selected={productFilters} onToggle={toggleProductFilter} onClear={() => setProductFilters([])} />
 
             <button
               type="button"
@@ -259,8 +259,46 @@ function EmptyText({ text }: { text: string }) {
   return <p className="rounded-lg border border-slate-900 bg-slate-950/70 p-3 text-[11px] text-slate-500">{text}</p>;
 }
 
-function ProductFilterChips({ options, selected, onToggle, onClear }: { options: string[]; selected: string[]; onToggle: (value: string) => void; onClear: () => void }) {
-  return <div className="flex min-h-9 max-w-[540px] flex-wrap items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-950 p-1"><button type="button" onClick={onClear} className={cn('rounded-md px-2.5 py-1.5 text-[11px] font-semibold transition-colors', selected.length === 0 ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-900 hover:text-slate-200')}>Todos</button>{options.map((item) => <button key={item} type="button" onClick={() => onToggle(item)} className={cn('rounded-md px-2.5 py-1.5 text-[11px] font-semibold transition-colors', selected.includes(item) ? 'bg-blue-500/15 text-blue-200 ring-1 ring-blue-500/30' : 'text-slate-500 hover:bg-slate-900 hover:text-slate-200')}>{item}</button>)}</div>;
+function ProductDropdown({ options, selected, onToggle, onClear }: { options: string[]; selected: string[]; onToggle: (value: string) => void; onClear: () => void }) {
+  const [open, setOpen] = useState(false);
+  const label = selected.length === 0 ? 'Todos os produtos' : selected.length === 1 ? selected[0] : `${selected.length} produtos`;
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="flex h-10 w-full items-center justify-between gap-3 rounded-lg border border-slate-800 bg-slate-950 px-3 text-left text-[12px] font-semibold text-slate-300 transition-colors hover:border-slate-700"
+      >
+        <span className="min-w-0 truncate">{label}</span>
+        <span className="text-[10px] text-slate-600">Produto</span>
+      </button>
+      {open && (
+        <div className="absolute left-0 top-11 z-30 w-64 rounded-2xl border border-slate-800 bg-slate-950 p-2 shadow-2xl shadow-black/30">
+          <button type="button" onClick={onClear} className={cn('mb-1 flex w-full items-center justify-between rounded-lg px-3 py-2 text-[11px] font-semibold transition-colors', selected.length === 0 ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-100')}>
+            Todos os produtos
+            {selected.length === 0 && <span className="font-mono text-[10px]">ativo</span>}
+          </button>
+          <div className="max-h-64 overflow-y-auto custom-scrollbar">
+            {options.map((item) => {
+              const active = selected.includes(item);
+              return (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => onToggle(item)}
+                  className={cn('flex w-full items-center justify-between rounded-lg px-3 py-2 text-[11px] font-semibold transition-colors', active ? 'bg-blue-500/15 text-blue-200' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-100')}
+                >
+                  <span className="truncate">{item}</span>
+                  <span className={cn('h-2 w-2 rounded-full', active ? 'bg-blue-400' : 'bg-slate-800')} />
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 type FunnelStepData = {

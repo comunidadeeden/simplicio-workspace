@@ -725,32 +725,32 @@ function TaskCard({
   onStatusChange: (id: string, patch: Partial<TaskDraft>) => void;
 }) {
   return (
-    <article className="rounded-lg border border-slate-800/80 bg-slate-900/30 p-3">
-      <div className="flex items-start justify-between gap-3">
-        <button onClick={() => onEdit(task)} className="text-left text-[12px] font-semibold leading-5 text-slate-200 transition-colors hover:text-blue-300">
+    <article className="min-w-0 overflow-hidden rounded-lg border border-slate-800/80 bg-slate-900/30 p-3">
+      <div className="flex items-start justify-between gap-2">
+        <button onClick={() => onEdit(task)} className="min-w-0 flex-1 break-words text-left text-[12px] font-semibold leading-5 text-slate-200 transition-colors hover:text-blue-300">
           {task.title}
         </button>
         <span className={cn('shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-bold', priorityStyles[task.priority])}>{task.priority}</span>
       </div>
-      <p className="mt-2 text-[10px] font-medium uppercase tracking-wider text-slate-600">{task.project || 'Sem projeto'}</p>
+      <p className="mt-2 truncate text-[10px] font-medium uppercase tracking-wider text-slate-600">{task.project || 'Sem projeto'}</p>
       {task.tags.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-1">
           {task.tags.map((tag) => (
-            <span key={tag} className="rounded bg-slate-950 px-1.5 py-0.5 text-[10px] text-slate-500">{tag}</span>
+            <span key={tag} className="max-w-full truncate rounded bg-slate-950 px-1.5 py-0.5 text-[10px] text-slate-500">{tag}</span>
           ))}
         </div>
       )}
-      <div className="mt-4 flex items-center justify-between text-[10px] text-slate-500">
-        <span>{task.owner || 'Sem responsável'}</span>
-        <span className="inline-flex items-center gap-1"><Clock3 size={11} />{formatDueDate(task.dueDate)}</span>
+      <div className="mt-4 flex min-w-0 flex-wrap items-center justify-between gap-2 text-[10px] text-slate-500">
+        <span className="min-w-0 truncate">{task.owner || 'Sem responsável'}</span>
+        <span className="inline-flex shrink-0 items-center gap-1"><Clock3 size={11} />{formatDueDate(task.dueDate)}</span>
       </div>
-      <div className="mt-3 grid grid-cols-[1fr_32px_32px] items-center gap-2">
+      <div className="mt-3 grid grid-cols-[minmax(0,1fr)_32px_32px] items-center gap-2">
         <button
           onClick={() => onStatusChange(task.id, { status: getNextStatus(task.status) })}
-          className="inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-slate-800 bg-slate-950 px-2 text-[10px] font-bold text-slate-400 transition-colors hover:text-slate-100"
+          className="inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-slate-800 bg-slate-950 px-2 text-[10px] font-bold text-slate-400 transition-colors hover:text-slate-100"
         >
-          <ArrowRight size={12} />
-          {getNextActionLabel(task.status)}
+          <ArrowRight size={12} className="shrink-0" />
+          <span className="truncate">{getNextActionLabel(task.status)}</span>
         </button>
         <IconButton label="Editar" onClick={() => onEdit(task)}><Edit3 size={13} /></IconButton>
         <IconButton label="Excluir" onClick={() => onDelete(task)}><Trash2 size={13} /></IconButton>

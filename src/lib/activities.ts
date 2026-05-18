@@ -135,6 +135,19 @@ export function subscribeTasks(profile: UserProfile, onChange: (tasks: TeamTask[
   );
 }
 
+
+export function subscribeUserActivityNotifications(profile: UserProfile, onChange: (tasks: TeamTask[]) => void, onError: (error: FirestoreError) => void) {
+  return onSnapshot(
+    query(
+      collection(db, 'activities'),
+      where('ownerEmail', '==', profile.email),
+      where('status', 'in', ['Em andamento', 'Revisão']),
+    ),
+    (snapshot) => onChange(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }) as TeamTask)),
+    onError,
+  );
+}
+
 export function subscribeTeamMembers(onChange: (members: TeamMember[]) => void, onError: (error: FirestoreError) => void) {
   return onSnapshot(
     query(collection(db, 'allowedUsers'), orderBy('name', 'asc')),

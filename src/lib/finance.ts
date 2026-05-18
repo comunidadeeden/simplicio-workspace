@@ -90,7 +90,7 @@ function makeTrafficPoint(point: Pick<TrafficSpendPoint, 'date' | 'label' | 'acc
   };
 }
 
-export const TRAFFIC_TAX_RATE = 0.1215;
+export const TRAFFIC_TAX_RATE = 0.1383;
 export const expenseKinds: ExpenseKind[] = ['Fixa', 'Variável', 'Imposto', 'Investimento', 'Tráfego importado'];
 export const expenseStatuses: ExpenseStatus[] = ['Aberta', 'Paga'];
 export const expenseCategories = ['Equipe', 'Tráfego', 'Ferramentas', 'Impostos', 'Operação', 'Conteúdo', 'Comissões', 'Outros'];
@@ -129,7 +129,7 @@ export const defaultTrafficExpenses = defaultTrafficSpend.map((spend): FinanceEx
     status: 'Paga',
     isRecurring: false,
     paymentMethod: 'Planilha de tráfego',
-    notes: 'Saída automática gerada pela planilha de anúncios com acréscimo de imposto de 12,15%.',
+    notes: 'Saída automática gerada pela planilha de anúncios com acréscimo de imposto de 13,83%.',
     source: 'traffic',
   };
 });

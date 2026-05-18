@@ -10,6 +10,7 @@ import {
   Edit3,
   FileSpreadsheet,
   Filter,
+  RefreshCw,
   Plus,
   ReceiptText,
   Repeat2,
@@ -52,12 +53,14 @@ export function Finance() {
   const [expenses, setExpenses] = useState<FinanceExpense[]>(defaultExpenses);
   const [revenue, setRevenue] = useState(defaultRevenue);
   const [trafficExpenses, setTrafficExpenses] = useState<FinanceExpense[]>([]);
+  const [integrationSettings, setIntegrationSettings] = useState(defaultIntegrationSettings);
+  const [loadingSheets, setLoadingSheets] = useState(false);
   const [sheetMessage, setSheetMessage] = useState('Planilhas aguardando leitura.');
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('connecting');
   const [syncMessage, setSyncMessage] = useState('Conectando ao Firebase...');
   const [view, setView] = useState<FinanceView>('overview');
-  const [dateStart, setDateStart] = useState(getMonthStart());
   const [dateEnd, setDateEnd] = useState(getToday());
+  const dateStart = useMemo(() => getPeriodStart(dateEnd), [dateEnd]);
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('Todas');
   const [statusFilter, setStatusFilter] = useState<ExpenseStatus | 'Todos'>('Todos');
@@ -80,21 +83,27 @@ export function Finance() {
     );
   }, []);
 
+  const refreshSheetData = async (settings = integrationSettings) => {
+    setLoadingSheets(true);
+    try {
+      const result = await loadSheetData(settings);
+      setRevenue(result.sales.length ? result.sales : defaultRevenue);
+      setTrafficExpenses(result.trafficExpenses.length ? result.trafficExpenses : []);
+      setSheetMessage(result.errors.length ? `Planilhas com pendência: ${result.errors.join(' | ')}` : 'Planilhas sincronizadas com dados reais.');
+    } finally {
+      setLoadingSheets(false);
+    }
+  };
+
   useEffect(() => {
     return subscribeIntegrationSettings(
       (settings) => {
-        loadSheetData(settings).then((result) => {
-          setRevenue(result.sales.length ? result.sales : defaultRevenue);
-          setTrafficExpenses(result.trafficExpenses.length ? result.trafficExpenses : []);
-          setSheetMessage(result.errors.length ? `Planilhas com pendência: ${result.errors.join(' | ')}` : 'Planilhas sincronizadas com dados reais.');
-        });
+        setIntegrationSettings(settings);
+        void refreshSheetData(settings);
       },
       () => {
-        loadSheetData(defaultIntegrationSettings).then((result) => {
-          setRevenue(result.sales.length ? result.sales : defaultRevenue);
-          setTrafficExpenses(result.trafficExpenses.length ? result.trafficExpenses : []);
-          setSheetMessage(result.errors.length ? `Planilhas com pendência: ${result.errors.join(' | ')}` : 'Planilhas sincronizadas com dados reais.');
-        });
+        setIntegrationSettings(defaultIntegrationSettings);
+        void refreshSheetData(defaultIntegrationSettings);
       },
     );
   }, []);
@@ -237,7 +246,17 @@ export function Finance() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <DateRangeControl start={dateStart} end={dateEnd} onStart={setDateStart} onEnd={setDateEnd} />
+          <DateRangeControl end={dateEnd} onEnd={setDateEnd} />
+          <button
+            type="button"
+            onClick={() => void refreshSheetData()}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-[11px] font-semibold text-slate-400 transition-colors hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={loadingSheets}
+            title={sheetMessage}
+          >
+            <RefreshCw size={13} className={cn(loadingSheets && 'animate-spin')} />
+            Atualizar planilhas
+          </button>
           <button onClick={openNewExpense} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-[11px] font-bold text-white transition-colors hover:bg-blue-500">
             <Plus size={13} />
             Lançar saída
@@ -345,12 +364,12 @@ export function Finance() {
 }
 
 
-function DateRangeControl({ start, end, onStart, onEnd }: { start: string; end: string; onStart: (value: string) => void; onEnd: (value: string) => void }) {
+function DateRangeControl({ end, onEnd }: { end: string; onEnd: (value: string) => void }) {
+  const start = getPeriodStart(end);
   return (
     <div className="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 p-1.5">
       <CalendarDays size={14} className="ml-1 text-blue-400" />
-      <input className="h-7 rounded-md border border-slate-800 bg-slate-950 px-2 text-[11px] text-slate-300 outline-none focus:ring-1 focus:ring-blue-600" type="date" value={start} onChange={(event) => onStart(event.target.value)} aria-label="Início do período" />
-      <span className="text-[10px] text-slate-600">até</span>
+      <span className="hidden text-[10px] font-semibold uppercase tracking-wider text-slate-600 sm:inline">{formatDate(start)} -</span>
       <input className="h-7 rounded-md border border-slate-800 bg-slate-950 px-2 text-[11px] text-slate-300 outline-none focus:ring-1 focus:ring-blue-600" type="date" value={end} onChange={(event) => onEnd(event.target.value)} aria-label="Fim do período" />
     </div>
   );
@@ -436,12 +455,15 @@ function ExpensePanel({
   onDelete: (expense: FinanceExpense) => void;
   onTogglePaid: (expense: FinanceExpense) => void;
 }) {
+  const [openGroup, setOpenGroup] = useState<ExpenseGroup | null>(null);
+  const groups = useMemo(() => groupExpensesByCategory(expenses), [expenses]);
+
   return (
     <div className="rounded-2xl border border-slate-900/50 bg-slate-950 p-5">
       <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h2 className="text-sm font-semibold text-slate-200">{view === 'recurring' ? 'Contas fixas' : 'Saídas totais'}</h2>
-          <p className="mt-1 text-[11px] text-slate-500">Saídas manuais somadas ao tráfego importado com imposto de 12,15%.</p>
+          <h2 className="text-sm font-semibold text-slate-200">{view === 'recurring' ? 'Contas fixas' : 'Saídas por categoria'}</h2>
+          <p className="mt-1 text-[11px] text-slate-500">Resumo concentrado das saídas. Abra uma categoria para ver todos os lançamentos, incluindo tráfego com imposto de 13,83%.</p>
         </div>
         <div className="relative w-full lg:max-w-xs">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-600" />
@@ -459,39 +481,133 @@ function ExpensePanel({
         <p className="self-end text-right text-[11px] text-slate-600">{expenses.length} saída(s)</p>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-slate-900 custom-scrollbar">
-        <div className="min-w-[860px] divide-y divide-slate-900">
-          {expenses.length ? expenses.map((expense) => (
-            <div key={expense.id} className="grid grid-cols-[1.5fr_0.8fr_0.8fr_0.8fr_0.8fr_128px] items-center gap-4 px-4 py-3">
-              <div>
-                <button onClick={() => onEdit(expense)} className="text-left text-[12px] font-semibold text-slate-200 transition-colors hover:text-blue-300">
-                  {expense.description}
-                </button>
-                <p className="mt-1 text-[10px] uppercase tracking-wider text-slate-600">{expense.category} · {expense.paymentMethod}</p>
-                {expense.source === 'traffic' && (
-                  <p className="mt-1 text-[10px] text-blue-300">Mídia {money.format(expense.rawAmount ?? 0)} + imposto {money.format(expense.taxAmount ?? 0)}</p>
-                )}
-              </div>
-              <span className={cn('w-fit rounded border px-2 py-1 text-[10px] font-bold', expense.status === 'Paga' ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300' : 'border-amber-500/20 bg-amber-500/10 text-amber-300')}>{expense.status}</span>
-              <span className="text-[11px] text-slate-400">{expense.kind}</span>
-              <span className={cn('text-[11px]', isOverdue(expense.dueDate) && expense.status === 'Aberta' ? 'text-rose-300' : 'text-slate-500')}>{formatDate(expense.dueDate)}</span>
-              <span className="font-mono text-[12px] font-bold text-slate-200">{money.format(expense.amount)}</span>
-              <div className="flex items-center justify-end gap-1">
-                {expense.source === 'traffic' ? (
-                  <span className="rounded border border-blue-500/20 bg-blue-500/10 px-2 py-1 text-[10px] font-bold text-blue-300">Auto</span>
-                ) : (
-                  <>
-                    <IconButton label={expense.status === 'Paga' ? 'Reabrir' : 'Marcar como paga'} onClick={() => onTogglePaid(expense)}><CheckCircle2 size={13} /></IconButton>
-                    <IconButton label="Editar" onClick={() => onEdit(expense)}><Edit3 size={13} /></IconButton>
-                    <IconButton label="Excluir" onClick={() => onDelete(expense)}><Trash2 size={13} /></IconButton>
-                  </>
-                )}
-              </div>
+      <div className="overflow-hidden rounded-xl border border-slate-900">
+        {groups.length ? groups.map((group) => (
+          <button
+            key={group.category}
+            type="button"
+            onClick={() => setOpenGroup(group)}
+            className="grid w-full grid-cols-[1fr_auto] items-center gap-4 border-b border-slate-900 px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-slate-900/35 md:grid-cols-[1.2fr_0.8fr_0.7fr_auto]"
+          >
+            <div>
+              <p className="text-[12px] font-semibold text-slate-200">{group.category}</p>
+              <p className="mt-1 text-[10px] uppercase tracking-wider text-slate-600">{group.count} lançamento(s) · {group.trafficCount ? `${group.trafficCount} de tráfego` : 'manual'}</p>
             </div>
-          )) : (
-            <div className="px-4 py-10 text-center text-[12px] text-slate-500">Nenhuma saída encontrada.</div>
-          )}
+            <div className="hidden md:block">
+              <p className="text-[10px] uppercase tracking-wider text-slate-600">Pago</p>
+              <p className="mt-1 font-mono text-[12px] font-bold text-emerald-300">{money.format(group.paidAmount)}</p>
+            </div>
+            <div className="hidden md:block">
+              <p className="text-[10px] uppercase tracking-wider text-slate-600">Aberto</p>
+              <p className="mt-1 font-mono text-[12px] font-bold text-amber-300">{money.format(group.openAmount)}</p>
+            </div>
+            <div className="text-right">
+              <p className="font-mono text-[14px] font-bold text-slate-100">{money.format(group.total)}</p>
+              <p className="mt-1 text-[10px] font-semibold text-blue-300">Ver detalhes</p>
+            </div>
+          </button>
+        )) : (
+          <div className="px-4 py-10 text-center text-[12px] text-slate-500">Nenhuma saída encontrada.</div>
+        )}
+      </div>
+
+      {openGroup && (
+        <ExpenseGroupModal
+          group={openGroup}
+          onClose={() => setOpenGroup(null)}
+          onEdit={onEdit}
+          onDelete={onDelete}
+          onTogglePaid={onTogglePaid}
+        />
+      )}
+    </div>
+  );
+}
+
+type ExpenseGroup = {
+  category: string;
+  expenses: FinanceExpense[];
+  total: number;
+  paidAmount: number;
+  openAmount: number;
+  count: number;
+  trafficCount: number;
+};
+
+function groupExpensesByCategory(expenses: FinanceExpense[]): ExpenseGroup[] {
+  const groups = expenses.reduce<Record<string, ExpenseGroup>>((acc, expense) => {
+    const category = expense.category || 'Outros';
+    acc[category] = acc[category] ?? { category, expenses: [], total: 0, paidAmount: 0, openAmount: 0, count: 0, trafficCount: 0 };
+    acc[category].expenses.push(expense);
+    acc[category].total += expense.amount;
+    acc[category].count += 1;
+    acc[category].trafficCount += expense.source === 'traffic' ? 1 : 0;
+    if (expense.status === 'Paga') acc[category].paidAmount += expense.amount;
+    if (expense.status === 'Aberta') acc[category].openAmount += expense.amount;
+    return acc;
+  }, {});
+
+  return Object.values(groups).sort((first, second) => second.total - first.total);
+}
+
+function ExpenseGroupModal({
+  group,
+  onClose,
+  onEdit,
+  onDelete,
+  onTogglePaid,
+}: {
+  group: ExpenseGroup;
+  onClose: () => void;
+  onEdit: (expense: FinanceExpense) => void;
+  onDelete: (expense: FinanceExpense) => void;
+  onTogglePaid: (expense: FinanceExpense) => void;
+}) {
+  return (
+    <Modal title={`${group.category} · ${money.format(group.total)}`} onClose={onClose}>
+      <div className="mb-4 grid grid-cols-3 gap-2">
+        <SnapshotItem label="Total" value={money.format(group.total)} tone="text-slate-100" />
+        <SnapshotItem label="Pago" value={money.format(group.paidAmount)} tone="text-emerald-400" />
+        <SnapshotItem label="Aberto" value={money.format(group.openAmount)} tone="text-amber-300" />
+      </div>
+      <div className="max-h-[58vh] overflow-y-auto rounded-xl border border-slate-900 custom-scrollbar">
+        <div className="min-w-[760px] divide-y divide-slate-900">
+          {group.expenses.map((expense) => (
+            <div key={expense.id}>
+              <ExpenseRow expense={expense} onEdit={onEdit} onDelete={onDelete} onTogglePaid={onTogglePaid} />
+            </div>
+          ))}
         </div>
+      </div>
+    </Modal>
+  );
+}
+
+function ExpenseRow({ expense, onEdit, onDelete, onTogglePaid }: { expense: FinanceExpense; onEdit: (expense: FinanceExpense) => void; onDelete: (expense: FinanceExpense) => void; onTogglePaid: (expense: FinanceExpense) => void }) {
+  return (
+    <div className="grid grid-cols-[1.5fr_0.8fr_0.8fr_0.8fr_128px] items-center gap-4 px-4 py-3">
+      <div>
+        <button onClick={() => onEdit(expense)} className="text-left text-[12px] font-semibold text-slate-200 transition-colors hover:text-blue-300">
+          {expense.description}
+        </button>
+        <p className="mt-1 text-[10px] uppercase tracking-wider text-slate-600">{expense.kind} · {expense.paymentMethod}</p>
+        {expense.source === 'traffic' && (
+          <p className="mt-1 text-[10px] text-blue-300">Mídia {money.format(expense.rawAmount ?? 0)} + imposto {money.format(expense.taxAmount ?? 0)}</p>
+        )}
+      </div>
+      <span className={cn('w-fit rounded border px-2 py-1 text-[10px] font-bold', expense.status === 'Paga' ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300' : 'border-amber-500/20 bg-amber-500/10 text-amber-300')}>{expense.status}</span>
+      <span className={cn('text-[11px]', isOverdue(expense.dueDate) && expense.status === 'Aberta' ? 'text-rose-300' : 'text-slate-500')}>{formatDate(expense.dueDate)}</span>
+      <span className="font-mono text-[12px] font-bold text-slate-200">{money.format(expense.amount)}</span>
+      <div className="flex items-center justify-end gap-1">
+        {expense.source === 'traffic' ? (
+          <span className="rounded border border-blue-500/20 bg-blue-500/10 px-2 py-1 text-[10px] font-bold text-blue-300">Auto</span>
+        ) : (
+          <>
+            <IconButton label={expense.status === 'Paga' ? 'Reabrir' : 'Marcar como paga'} onClick={() => onTogglePaid(expense)}><CheckCircle2 size={13} /></IconButton>
+            <IconButton label="Editar" onClick={() => onEdit(expense)}><Edit3 size={13} /></IconButton>
+            <IconButton label="Excluir" onClick={() => onDelete(expense)}><Trash2 size={13} /></IconButton>
+          </>
+        )}
       </div>
     </div>
   );
@@ -597,9 +713,12 @@ function getToday() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function getMonthStart() {
-  const today = new Date();
-  return new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
+function getPeriodStart(end: string) {
+  const date = new Date(`${end}T00:00:00`);
+  const day = date.getDay();
+  const diff = (day + 1) % 7;
+  date.setDate(date.getDate() - diff);
+  return date.toISOString().slice(0, 10);
 }
 
 function sum(values: number[]) { return values.reduce((total, value) => total + value, 0); }

@@ -461,7 +461,7 @@ function toTrafficExpense(spend: TrafficSpendPoint): FinanceExpense {
     status: 'Paga',
     isRecurring: false,
     paymentMethod: 'Planilha de tráfego',
-    notes: 'Saída automática gerada pela planilha de anúncios com acréscimo de imposto de 12,15%.',
+    notes: 'Saída automática gerada pela planilha de anúncios com acréscimo de imposto de 13,83%.',
     source: 'traffic',
   };
 }

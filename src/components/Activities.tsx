@@ -435,6 +435,8 @@ export function Activities({ userProfile }: { userProfile: UserProfile }) {
         onChange={applyFocus}
       />
 
+      <AttentionBanner tasks={tasks} onFocus={applyFocus} />
+
       <section className="grid grid-cols-2 gap-2 md:grid-cols-5">
         {[
           { label: 'Ativas', value: tasks.length - completed, detail: `${inProgress} em execução`, icon: CheckCircle2 },
@@ -530,7 +532,6 @@ export function Activities({ userProfile }: { userProfile: UserProfile }) {
         <aside className="space-y-6 xl:col-span-3">
           <DailyQueue tasks={tasks} onEdit={openEditTask} onStatusChange={persistTaskPatch} />
           <RoutinePanel routines={routines} onComplete={completeRoutine} onDelete={deleteRoutine} onNew={openNewRoutine} />
-          <AttentionPanel tasks={tasks} />
         </aside>
       </section>
 
@@ -569,6 +570,42 @@ export function Activities({ userProfile }: { userProfile: UserProfile }) {
   );
 }
 
+
+function AttentionBanner({ tasks, onFocus }: { tasks: TeamTask[]; onFocus: (focus: FocusFilter) => void }) {
+  const overdue = tasks.filter((task) => task.status !== 'Concluído' && isOverdue(task.dueDate));
+  const high = tasks.filter((task) => task.status !== 'Concluído' && task.priority === 'Alta');
+  const attention = Array.from(new Map([...overdue, ...high].map((task) => [task.id, task])).values()).slice(0, 3);
+
+  if (!attention.length) return null;
+
+  return (
+    <section className="rounded-2xl border border-amber-400/20 bg-amber-400/[0.07] p-4 shadow-[0_0_30px_rgba(251,191,36,0.06)]">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-amber-400/25 bg-amber-400/10 text-amber-300">
+            <AlertTriangle size={17} />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-amber-100">Pontos de atenção</p>
+            <p className="mt-1 text-[11px] text-amber-100/65">{overdue.length} atrasada(s) e {high.length} de alta prioridade pedindo ação.</p>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => onFocus('overdue')} className="rounded-lg border border-rose-400/20 bg-rose-400/10 px-3 py-2 text-[11px] font-bold text-rose-200 transition-colors hover:bg-rose-400/15">Ver atrasadas</button>
+          <button onClick={() => onFocus('high')} className="rounded-lg border border-amber-300/20 bg-amber-300/10 px-3 py-2 text-[11px] font-bold text-amber-100 transition-colors hover:bg-amber-300/15">Ver alta prioridade</button>
+        </div>
+      </div>
+      <div className="mt-4 grid gap-2 md:grid-cols-3">
+        {attention.map((task) => (
+          <div key={task.id} className="rounded-xl border border-slate-800/80 bg-slate-950/70 p-3">
+            <p className="truncate text-[12px] font-semibold text-slate-100">{task.title}</p>
+            <p className="mt-1 truncate text-[10px] text-slate-500">{task.owner || 'Sem responsável'} · {formatDueDate(task.dueDate)}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
 
 function HeaderCounter({ label, value }: { label: string; value: number }) {
   return (
@@ -865,39 +902,6 @@ function RoutinePanel({
           </div>
         )) : (
           <p className="rounded-lg border border-slate-900 bg-slate-950/70 p-3 text-[11px] text-slate-500">Nenhuma rotina pendente para hoje.</p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function AttentionPanel({ tasks }: { tasks: TeamTask[] }) {
-  const attention = tasks
-    .filter((task) => task.status !== 'Concluído' && (task.priority === 'Alta' || isOverdue(task.dueDate)))
-    .slice(0, 5);
-
-  return (
-    <div className="rounded-2xl border border-amber-500/10 bg-amber-500/[0.03] p-5">
-      <div className="flex items-center gap-3">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-amber-500/20 bg-amber-500/10 text-amber-300">
-          <AlertTriangle size={16} />
-        </div>
-        <div>
-          <h2 className="text-sm font-semibold text-slate-200">Pontos de atenção</h2>
-          <p className="text-[11px] text-slate-500">Prioridade alta ou prazo vencido.</p>
-        </div>
-      </div>
-      <div className="mt-5 space-y-3">
-        {attention.length ? attention.map((task) => (
-          <div key={task.id} className="flex gap-3 rounded-lg border border-slate-900/80 bg-slate-950/70 p-3">
-            <div className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-300" />
-            <div>
-              <p className="text-[11px] leading-5 text-slate-400">{task.title}</p>
-              <p className="mt-1 text-[10px] text-slate-600">{task.owner || 'Sem responsável'} · {formatDueDate(task.dueDate)}</p>
-            </div>
-          </div>
-        )) : (
-          <p className="rounded-lg border border-slate-900 bg-slate-950/70 p-3 text-[11px] text-slate-500">Nenhum ponto crítico agora.</p>
         )}
       </div>
     </div>

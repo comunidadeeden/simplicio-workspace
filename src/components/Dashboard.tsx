@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { motion } from 'motion/react';
 import { AreaChart, Area, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, CartesianGrid } from 'recharts';
 import { AlertTriangle, ArrowDownRight, ArrowUpRight, CalendarDays, Filter, PieChart as PieChartIcon, RefreshCw, Target, TrendingUp, Wallet } from 'lucide-react';
-import { type SalesRevenuePoint, type TrafficSpendPoint } from '../lib/finance';
+import { TRAFFIC_TAX_RATE, type SalesRevenuePoint, type TrafficSpendPoint } from '../lib/finance';
 import { defaultIntegrationSettings, loadSheetData, subscribeIntegrationSettings } from '../lib/integrations';
 import { cn } from '../lib/utils';
 
@@ -63,7 +63,7 @@ export function Dashboard() {
 
   const totalRevenue = sum(filteredRevenue.map((item) => item.revenue));
   const totalOrders = sum(filteredRevenue.map((item) => item.orders));
-  const totalTraffic = sum(filteredTraffic.map((item) => item.spend));
+  const totalTraffic = sum(filteredTraffic.map((item) => getTaxedTrafficSpend(item)));
   const roas = totalTraffic ? totalRevenue / totalTraffic : 0;
   const averageTicket = totalRevenue / Math.max(totalOrders, 1);
   const cpa = totalOrders ? totalTraffic / totalOrders : 0;
@@ -95,7 +95,10 @@ export function Dashboard() {
           </div>
           <div className="grid gap-2 lg:grid-cols-[220px_auto_40px] xl:justify-end">
             <ProductDropdown options={productOptions} selected={productFilters} onToggle={toggleProductFilter} onClear={() => setProductFilters([])} />
-            <DateRangeControl start={customStart} end={customEnd} onStart={setCustomStart} onEnd={setCustomEnd} onReset={() => {
+            <DateRangeControl end={customEnd} onEnd={(value) => {
+              setCustomEnd(value);
+              setCustomStart(getPeriodStart(value));
+            }} onReset={() => {
               const range = getDefaultDateRange();
               setCustomStart(range.start);
               setCustomEnd(range.end);
@@ -208,23 +211,18 @@ function StatusBanner({ status, message }: { status: LoadStatus; message: string
 
 
 function DateRangeControl({
-  start,
   end,
-  onStart,
   onEnd,
   onReset,
 }: {
-  start: string;
   end: string;
-  onStart: (value: string) => void;
   onEnd: (value: string) => void;
   onReset: () => void;
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 p-1.5">
       <CalendarDays size={14} className="ml-1 text-blue-400" />
-      <input className="h-7 rounded-md border border-slate-800 bg-slate-950 px-2 text-[11px] text-slate-300 outline-none focus:ring-1 focus:ring-blue-600" type="date" value={start} onChange={(event) => onStart(event.target.value)} aria-label="Início do período" />
-      <span className="text-[10px] text-slate-600">até</span>
+      <span className="px-1 text-[10px] font-semibold uppercase tracking-wider text-slate-600">Até</span>
       <input className="h-7 rounded-md border border-slate-800 bg-slate-950 px-2 text-[11px] text-slate-300 outline-none focus:ring-1 focus:ring-blue-600" type="date" value={end} onChange={(event) => onEnd(event.target.value)} aria-label="Fim do período" />
       <button type="button" onClick={onReset} className="rounded-md px-2 py-1 text-[10px] font-semibold text-blue-300 transition-colors hover:bg-blue-500/10">
         Último sábado até hoje
@@ -357,7 +355,7 @@ function ConversionBadge({ value }: { value: number | null }) {
 }
 
 function buildFunnel(traffic: TrafficSpendPoint[], revenue: SalesRevenuePoint[]): FunnelStepData[] {
-  const spend = sum(traffic.map((item) => item.spend));
+  const spend = sum(traffic.map((item) => getTaxedTrafficSpend(item)));
   const impressions = sum(traffic.map((item) => item.impressions));
   const clicks = sum(traffic.map((item) => item.clicks));
   const pageViews = sum(traffic.map((item) => readTrafficNumber(item, ['landing page views', 'visualizacoes de pagina', 'visualizações de página', 'visualizacao de pagina', 'page views'])));
@@ -402,11 +400,19 @@ function mergeDailyFlow(revenue: SalesRevenuePoint[], traffic: TrafficSpendPoint
   });
   traffic.forEach((item) => {
     groups[item.date] = groups[item.date] ?? { name: item.label, receita: 0, midia: 0, pedidos: 0 };
-    groups[item.date].midia += item.spend;
+    groups[item.date].midia += getTaxedTrafficSpend(item);
   });
   return Object.entries(groups)
     .sort(([first], [second]) => first.localeCompare(second))
     .map(([, value]) => ({ ...value, cpa: value.pedidos ? value.midia / value.pedidos : 0 }));
+}
+
+function getTaxedTrafficSpend(item: TrafficSpendPoint) {
+  return item.spend * (1 + TRAFFIC_TAX_RATE);
+}
+
+function getPeriodStart(end: string) {
+  return toIso(lastSaturday(new Date(`${end}T00:00:00`)));
 }
 
 function matchesDate(date: string, start: string, end: string) {

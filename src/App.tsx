@@ -70,7 +70,7 @@ export default function App() {
     if (activePage === 'finance') return <Finance />;
     if (activePage === 'launches') return <Launches />;
     if (activePage === 'leads') return <Leads />;
-    if (activePage === 'team') return <Team userProfile={userProfile} />;
+    if (activePage === 'team') return <Team />;
 
     return <Dashboard />;
   };

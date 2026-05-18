@@ -105,7 +105,7 @@ const weekdayOptions = [
   { value: 0, label: 'Domingo' },
 ];
 
-export function Activities({ userProfile, embedded = false }: { userProfile: UserProfile; embedded?: boolean }) {
+export function Activities({ userProfile }: { userProfile: UserProfile }) {
   const isAdmin = userProfile.role === 'admin';
   const [tasks, setTasks] = useState<TeamTask[]>(isAdmin ? defaultTasks : []);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>(defaultTeamMembers);
@@ -377,8 +377,8 @@ export function Activities({ userProfile, embedded = false }: { userProfile: Use
   };
 
   return (
-    <div className={cn('mx-auto max-w-[1500px] space-y-6 text-slate-300', embedded ? 'p-4' : 'p-10')}>
-      {!embedded && <section className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+    <div className="mx-auto max-w-[1500px] space-y-6 p-10 text-slate-300">
+      <section className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-widest text-blue-400">Operação da equipe</p>
           <h1 className="mt-2 text-xl font-display font-bold tracking-tight text-slate-100">Atividades</h1>
@@ -390,6 +390,17 @@ export function Activities({ userProfile, embedded = false }: { userProfile: Use
         <div className="flex flex-wrap items-center gap-2">
           <HeaderCounter label="Minhas ativas" value={myActiveTasks} />
           <HeaderCounter label="Rotinas hoje" value={myDueRoutines} />
+          {isAdmin && (
+            <select
+              className="h-9 rounded-lg border border-slate-800 bg-slate-950 px-3 text-[11px] font-semibold text-slate-400 outline-none focus:ring-1 focus:ring-blue-600"
+              value={ownerFilter}
+              onChange={(event) => setOwnerFilter(event.target.value)}
+              aria-label="Filtrar responsável"
+            >
+              <option value="Todos">Todos responsáveis</option>
+              {teamMembers.map((member) => <option key={member.email} value={member.name}>{member.name}</option>)}
+            </select>
+          )}
           <button
             onClick={() => setShowFilters((value) => !value)}
             className="inline-flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-[11px] font-semibold text-slate-400 transition-colors hover:text-slate-100"
@@ -414,7 +425,7 @@ export function Activities({ userProfile, embedded = false }: { userProfile: Use
             Nova atividade
           </button>
         </div>
-      </section>}
+      </section>
 
 
       <FocusRail
@@ -481,10 +492,9 @@ export function Activities({ userProfile, embedded = false }: { userProfile: Use
             </div>
 
             {showFilters && (
-              <div className="grid grid-cols-1 gap-3 rounded-xl border border-slate-900 bg-slate-950/70 p-3 md:grid-cols-2 xl:grid-cols-5">
+              <div className="grid grid-cols-1 gap-3 rounded-xl border border-slate-900 bg-slate-950/70 p-3 md:grid-cols-2 xl:grid-cols-4">
                 <SelectFilter label="Status" value={statusFilter} onChange={(value) => setStatusFilter(value as TaskStatus | 'Todos')} options={isAdmin ? ['Todos', ...taskStatuses] : ['Todos', 'Em andamento', 'Revisão', 'Concluído']} />
                 <SelectFilter label="Prioridade" value={priorityFilter} onChange={(value) => setPriorityFilter(value as TaskPriority | 'Todas')} options={['Todas', ...taskPriorities]} />
-                {isAdmin && <SelectFilter label="Responsável" value={ownerFilter} onChange={setOwnerFilter} options={['Todos', ...teamMembers.map((member) => member.name)]} />}
                 <SelectFilter
                   label="Prazo"
                   value={periodFilter}

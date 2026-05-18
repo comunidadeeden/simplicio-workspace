@@ -1,18 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Check, Eye, Mail, Shield, Trash2, UserPlus, Users } from 'lucide-react';
-import { Activities } from './Activities';
+import { Check, Mail, Shield, Trash2, UserPlus, Users } from 'lucide-react';
 import {
   ADMIN_PERMISSIONS,
   DEFAULT_COLLABORATOR_PERMISSIONS,
   addAllowedUser,
-  hasPageAccess,
   isAdminEmail,
   removeAllowedUser,
   subscribeAllowedUsers,
   updateAllowedUser,
   type AllowedUser,
   type AppPage,
-  type UserProfile,
 } from '../lib/auth';
 import { cn } from '../lib/utils';
 
@@ -27,7 +24,7 @@ const pageOptions: Array<{ id: AppPage; label: string }> = [
 const inputClass = 'h-9 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 text-[12px] text-slate-300 placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-600';
 const labelClass = 'text-[10px] font-semibold uppercase tracking-widest text-slate-500';
 
-export function Team({ userProfile }: { userProfile: UserProfile }) {
+export function Team() {
   const [users, setUsers] = useState<AllowedUser[]>([]);
   const [selectedEmail, setSelectedEmail] = useState('');
   const [name, setName] = useState('');
@@ -42,15 +39,7 @@ export function Team({ userProfile }: { userProfile: UserProfile }) {
     if (selected && !selectedEmail) setSelectedEmail(selected.email);
   }, [selected, selectedEmail]);
 
-  const selectedProfile: UserProfile | null = selected ? {
-    uid: `preview-${selected.email}`,
-    email: selected.email,
-    name: selected.name || selected.email,
-    photoURL: '',
-    role: selected.role,
-    active: selected.active,
-    permissions: selected.permissions,
-  } : null;
+
 
   const createMember = async () => {
     if (!email.trim()) return;
@@ -85,7 +74,7 @@ export function Team({ userProfile }: { userProfile: UserProfile }) {
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-widest text-blue-400">Controle de acesso</p>
           <h1 className="mt-2 text-xl font-display font-bold tracking-tight text-slate-100">Equipe</h1>
-          <p className="mt-1 max-w-2xl text-[12px] leading-5 text-slate-500">Gerencie membros, permissões por aba e veja a área de atividades como cada colaborador vê.</p>
+          <p className="mt-1 max-w-2xl text-[12px] leading-5 text-slate-500">Gerencie membros e permissões por aba. Para acompanhar tarefas por pessoa, use o filtro de responsável em Atividades.</p>
         </div>
       </section>
 
@@ -131,7 +120,7 @@ export function Team({ userProfile }: { userProfile: UserProfile }) {
         </aside>
 
         <main className="space-y-6 xl:col-span-8">
-          {selected && selectedProfile ? (
+          {selected ? (
             <>
               <section className="rounded-2xl border border-slate-900/50 bg-slate-950 p-5">
                 <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -159,23 +148,6 @@ export function Team({ userProfile }: { userProfile: UserProfile }) {
                     );
                   })}
                 </div>
-              </section>
-
-              <section className="rounded-2xl border border-slate-900/50 bg-slate-950 p-4">
-                <div className="mb-4 flex items-center gap-2 px-1">
-                  <Eye size={15} className="text-blue-400" />
-                  <div>
-                    <h2 className="text-sm font-semibold text-slate-200">Visão de atividades do membro</h2>
-                    <p className="mt-1 text-[11px] text-slate-500">Recorte igual ao que esse usuário vê ao entrar na aba Atividades.</p>
-                  </div>
-                </div>
-                {hasPageAccess(selectedProfile, 'activities') ? (
-                  <div className="overflow-hidden rounded-xl border border-slate-900">
-                    <Activities userProfile={selectedProfile} embedded />
-                  </div>
-                ) : (
-                  <p className="rounded-xl border border-slate-900 bg-slate-950/70 p-4 text-[12px] text-slate-500">Esse membro não tem permissão para acessar Atividades.</p>
-                )}
               </section>
             </>
           ) : (

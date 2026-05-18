@@ -83,15 +83,17 @@ export function Dashboard() {
 
   return (
     <div className="mx-auto max-w-[1500px] space-y-6 p-10 text-slate-300">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+      <div className="grid gap-4 xl:grid-cols-[minmax(320px,1fr)_auto]">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-widest text-blue-400">Comando da operação</p>
           <h1 className="mt-2 text-xl font-display font-bold tracking-tight text-slate-100">Dashboard</h1>
           <p className="mt-1 max-w-2xl text-[12px] leading-5 text-slate-500">Analise faturamento, mídia, ROAS e mix de produtos com filtros de gestão.</p>
         </div>
-        <div className="flex w-full flex-col gap-3 xl:w-auto xl:items-end">
-          <StatusBanner status={status} message={sheetMessage} />
-          <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+        <div className="flex flex-col gap-3 xl:items-end">
+          <div className="flex justify-start xl:justify-end">
+            <StatusBanner status={status} message={sheetMessage} />
+          </div>
+          <div className="grid gap-2 lg:grid-cols-[auto_auto_40px] xl:justify-end">
             <DateRangeControl start={customStart} end={customEnd} onStart={setCustomStart} onEnd={setCustomEnd} onReset={() => {
               const range = getDefaultDateRange();
               setCustomStart(range.start);
@@ -111,7 +113,7 @@ export function Dashboard() {
               <Filter size={15} />
             </button>
           </div>
-          <div className="flex items-center gap-2 text-[11px] text-slate-600">
+          <div className="flex items-center gap-2 text-[11px] text-slate-600 xl:justify-end">
             <CalendarDays size={12} />
             <span>{describeRange(dateRange.start, dateRange.end)}</span>
           </div>

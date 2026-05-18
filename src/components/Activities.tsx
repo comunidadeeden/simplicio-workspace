@@ -30,6 +30,7 @@ import {
   subscribeTeamMembers,
   taskPriorities,
   taskStatuses,
+  updateRoutine,
   updateTask,
   type MemberDraft,
   type RoutineDraft,
@@ -71,6 +72,8 @@ const emptyRoutineDraft: RoutineDraft = {
   startDate: new Date().toISOString().slice(0, 10),
   time: '09:00',
   frequency: 'daily',
+  weekdays: [new Date().getDay()],
+  completedOccurrences: [],
   notes: '',
   tags: [],
   active: true,
@@ -92,6 +95,15 @@ const priorityStyles: Record<TaskPriority, string> = {
 const inputClass =
   'h-9 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 text-[12px] text-slate-300 placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-600';
 const labelClass = 'text-[10px] font-semibold uppercase tracking-widest text-slate-500';
+const weekdayOptions = [
+  { value: 1, label: 'Segunda-feira' },
+  { value: 2, label: 'Terça-feira' },
+  { value: 3, label: 'Quarta-feira' },
+  { value: 4, label: 'Quinta-feira' },
+  { value: 5, label: 'Sexta-feira' },
+  { value: 6, label: 'Sábado' },
+  { value: 0, label: 'Domingo' },
+];
 
 export function Activities({ userProfile }: { userProfile: UserProfile }) {
   const isAdmin = userProfile.role === 'admin';
@@ -178,6 +190,9 @@ export function Activities({ userProfile }: { userProfile: UserProfile }) {
   const completed = tasks.filter((task) => task.status === 'Concluído').length;
   const atRisk = tasks.filter((task) => task.priority === 'Alta' && task.status !== 'Concluído').length;
   const inProgress = tasks.filter((task) => task.status === 'Em andamento').length;
+  const myActiveTasks = tasks.filter((task) => task.ownerEmail === userProfile.email && task.status !== 'Concluído').length;
+  const dueRoutines = routines.filter((routine) => isRoutineDueToday(routine) && !isRoutineCompletedForCurrentOccurrence(routine));
+  const myDueRoutines = dueRoutines.filter((routine) => routine.ownerEmail === userProfile.email).length;
   const openNewTask = () => {
     setEditingTask(null);
     setTaskDraft(isAdmin ? { ...emptyTaskDraft, owner: teamMembers[0]?.name ?? '', ownerEmail: teamMembers[0]?.email ?? '' } : { ...emptyTaskDraft, owner: userProfile.name, ownerEmail: userProfile.email, status: 'Em andamento' });
@@ -255,32 +270,20 @@ export function Activities({ userProfile }: { userProfile: UserProfile }) {
     setRoutineModalOpen(false);
   };
 
-  const createTaskFromRoutine = async (routine: TeamRoutine) => {
-    const dueDate = getRoutineNextDate(routine);
-    const task: TaskDraft = {
-      title: routine.title,
-      project: routine.project,
-      owner: routine.owner,
-      ownerEmail: routine.ownerEmail,
-      status: isAdmin ? 'Backlog' : 'Em andamento',
-      priority: routine.priority,
-      dueDate,
-      effort: routine.time ? routine.time : '',
-      tags: routine.tags,
-      notes: routine.notes,
-    };
+  const completeRoutine = async (routine: TeamRoutine) => {
+    const occurrence = getRoutineOccurrenceKey(routine);
+    const completedOccurrences = Array.from(new Set([...(routine.completedOccurrences ?? []), occurrence]));
 
-    if (syncStatus === 'online') {
-      try {
-        await createTask(task);
-        return;
-      } catch (error) {
-        setSyncStatus('local');
-        setSyncMessage(`Atividade da rotina salva localmente. Firebase recusou a gravação: ${getErrorMessage(error)}.`);
-      }
+    setRoutines((current) => current.map((item) => (item.id === routine.id ? { ...item, completedOccurrences } : item)));
+
+    if (syncStatus !== 'online' || routine.id.startsWith('local-')) return;
+
+    try {
+      await updateRoutine(routine.id, { completedOccurrences });
+    } catch (error) {
+      setSyncStatus('local');
+      setSyncMessage(`Rotina concluída localmente. Firebase recusou a gravação: ${getErrorMessage(error)}.`);
     }
-
-    addLocalTask(task);
   };
 
   const deleteRoutine = async (routine: TeamRoutine) => {
@@ -366,7 +369,7 @@ export function Activities({ userProfile }: { userProfile: UserProfile }) {
   };
 
   const addLocalRoutine = (draft: RoutineDraft) => {
-    setRoutines((current) => [{ id: `local-routine-${Date.now()}`, ...draft }, ...current]);
+    setRoutines((current) => [{ id: `local-routine-${Date.now()}`, ...draft, completedOccurrences: draft.completedOccurrences ?? [] }, ...current]);
   };
 
   const addLocalMember = (draft: MemberDraft) => {
@@ -386,6 +389,8 @@ export function Activities({ userProfile }: { userProfile: UserProfile }) {
 
         <div className="flex flex-wrap items-center gap-2">
           <SyncBadge status={syncStatus}>{syncMessage}</SyncBadge>
+          <HeaderCounter label="Minhas ativas" value={myActiveTasks} />
+          <HeaderCounter label="Rotinas hoje" value={myDueRoutines} />
           <button
             onClick={() => setShowFilters((value) => !value)}
             className="inline-flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-[11px] font-semibold text-slate-400 transition-colors hover:text-slate-100"
@@ -420,11 +425,13 @@ export function Activities({ userProfile }: { userProfile: UserProfile }) {
         onChange={applyFocus}
       />
 
-      <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
+      <section className="grid grid-cols-2 gap-2 md:grid-cols-5">
         {[
-          { label: 'Atividades ativas', value: tasks.length - completed, detail: `${inProgress} em execução`, icon: CheckCircle2 },
-          { label: 'Prioridade alta', value: atRisk, detail: 'pedem acompanhamento', icon: Flag },
-          { label: 'Concluídas', value: completed, detail: `${filteredTasks.length} visíveis`, icon: CalendarDays },
+          { label: 'Ativas', value: tasks.length - completed, detail: `${inProgress} em execução`, icon: CheckCircle2 },
+          { label: 'Minhas', value: myActiveTasks, detail: 'em aberto', icon: Clock3 },
+          { label: 'Rotinas', value: dueRoutines.length, detail: `${myDueRoutines} minhas`, icon: CalendarDays },
+          { label: 'Alta', value: atRisk, detail: 'prioridade', icon: Flag },
+          { label: 'Concluídas', value: completed, detail: `${filteredTasks.length} visíveis`, icon: CheckCircle2 },
         ].map((stat, index) => {
           const Icon = stat.icon;
           return (
@@ -433,18 +440,18 @@ export function Activities({ userProfile }: { userProfile: UserProfile }) {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.04 }}
-              className="rounded-xl border border-slate-900/80 bg-slate-950 p-4"
+              className="rounded-lg border border-slate-900/80 bg-slate-950 p-3"
             >
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-[11px] font-medium uppercase tracking-widest text-slate-500">{stat.label}</p>
-                  <p className="mt-2 font-mono text-xl font-bold tracking-tighter text-slate-100">{stat.value}</p>
+                  <p className="mt-1 font-mono text-lg font-bold tracking-tighter text-slate-100">{stat.value}</p>
                 </div>
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-800 bg-slate-900/50 text-blue-400">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-800 bg-slate-900/50 text-blue-400">
                   <Icon size={15} />
                 </div>
               </div>
-              <p className="mt-2 text-[11px] text-slate-600">{stat.detail}</p>
+              <p className="mt-1 text-[10px] text-slate-600">{stat.detail}</p>
             </motion.div>
           );
         })}
@@ -513,7 +520,7 @@ export function Activities({ userProfile }: { userProfile: UserProfile }) {
 
         <aside className="space-y-6 xl:col-span-3">
           <DailyQueue tasks={tasks} onEdit={openEditTask} onStatusChange={persistTaskPatch} />
-          <RoutinePanel routines={routines} onCreate={createTaskFromRoutine} onDelete={deleteRoutine} onNew={openNewRoutine} />
+          <RoutinePanel routines={routines} onComplete={completeRoutine} onDelete={deleteRoutine} onNew={openNewRoutine} />
           <AttentionPanel tasks={tasks} />
         </aside>
       </section>
@@ -553,6 +560,15 @@ export function Activities({ userProfile }: { userProfile: UserProfile }) {
   );
 }
 
+
+function HeaderCounter({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="inline-flex h-8 items-center gap-2 rounded-lg border border-slate-900 bg-slate-950/70 px-2.5">
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-600">{label}</span>
+      <span className="font-mono text-[12px] font-bold text-slate-200">{value}</span>
+    </div>
+  );
+}
 
 function FocusRail({
   active,
@@ -797,23 +813,26 @@ function DailyQueue({
 
 function RoutinePanel({
   routines,
-  onCreate,
+  onComplete,
   onDelete,
   onNew,
 }: {
   routines: TeamRoutine[];
-  onCreate: (routine: TeamRoutine) => void;
+  onComplete: (routine: TeamRoutine) => void;
   onDelete: (routine: TeamRoutine) => void;
   onNew: () => void;
 }) {
-  const visibleRoutines = routines.filter((routine) => routine.active).slice(0, 8);
+  const visibleRoutines = routines
+    .filter((routine) => routine.active !== false && isRoutineDueToday(routine) && !isRoutineCompletedForCurrentOccurrence(routine))
+    .sort((first, second) => getRoutineSortValue(first) - getRoutineSortValue(second))
+    .slice(0, 8);
 
   return (
     <div className="rounded-2xl border border-slate-900/50 bg-slate-950 p-5">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-slate-200">Rotinas</h2>
-          <p className="mt-1 text-[11px] text-slate-500">Atividades repetitivas por pessoa.</p>
+          <h2 className="text-sm font-semibold text-slate-200">Rotinas de hoje</h2>
+          <p className="mt-1 text-[11px] text-slate-500">Marque aqui quando fizer.</p>
         </div>
         <button onClick={onNew} className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white transition-colors hover:bg-blue-500" aria-label="Adicionar rotina" title="Adicionar rotina">
           <Plus size={14} />
@@ -826,20 +845,17 @@ function RoutinePanel({
             <div className="flex items-start justify-between gap-2">
               <div>
                 <p className="text-[12px] font-semibold leading-5 text-slate-200">{routine.title}</p>
-                <p className="mt-1 text-[10px] text-slate-600">{routine.owner || 'Sem responsável'} · {formatRoutineFrequency(routine.frequency)} às {routine.time || '--:--'}</p>
+                <p className="mt-1 text-[10px] text-slate-600">{routine.owner || 'Sem responsável'} · {formatRoutineSchedule(routine)}</p>
               </div>
               <IconButton label="Excluir rotina" onClick={() => onDelete(routine)}><Trash2 size={13} /></IconButton>
             </div>
-            <div className="mt-3 flex items-center justify-between gap-2">
-              <span className="text-[10px] text-slate-600">Próxima: {formatDueDate(getRoutineNextDate(routine))}</span>
-              <button onClick={() => onCreate(routine)} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-800 px-2 py-1.5 text-[10px] font-bold text-slate-400 transition-colors hover:text-slate-100">
-                <Plus size={12} />
-                Criar
-              </button>
-            </div>
+            <button onClick={() => onComplete(routine)} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2 py-2 text-[10px] font-bold text-emerald-300 transition-colors hover:bg-emerald-500/15">
+              <CheckCircle2 size={13} />
+              Concluir rotina
+            </button>
           </div>
         )) : (
-          <p className="rounded-lg border border-slate-900 bg-slate-950/70 p-3 text-[11px] text-slate-500">Nenhuma rotina cadastrada ainda.</p>
+          <p className="rounded-lg border border-slate-900 bg-slate-950/70 p-3 text-[11px] text-slate-500">Nenhuma rotina pendente para hoje.</p>
         )}
       </div>
     </div>
@@ -969,7 +985,11 @@ function RoutineModal({
           )}
         </Field>
         <Field label="Frequência"><select className={inputClass} value={draft.frequency} onChange={(event) => onChange({ ...draft, frequency: event.target.value as RoutineFrequency })}><option value="daily">Todos os dias</option><option value="weekly">Toda semana</option></select></Field>
-        <Field label="Data inicial"><input className={inputClass} type="date" value={draft.startDate} onChange={(event) => onChange({ ...draft, startDate: event.target.value })} /></Field>
+        {draft.frequency === 'weekly' ? (
+          <Field label="Dia da semana"><select className={inputClass} value={draft.weekdays[0] ?? new Date().getDay()} onChange={(event) => onChange({ ...draft, weekdays: [Number(event.target.value)] })}>{weekdayOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field>
+        ) : (
+          <Field label="Data inicial"><input className={inputClass} type="date" value={draft.startDate} onChange={(event) => onChange({ ...draft, startDate: event.target.value })} /></Field>
+        )}
         <Field label="Horário"><input className={inputClass} type="time" value={draft.time} onChange={(event) => onChange({ ...draft, time: event.target.value })} /></Field>
         <Field label="Prioridade"><select className={inputClass} value={draft.priority} onChange={(event) => onChange({ ...draft, priority: event.target.value as TaskPriority })}>{taskPriorities.map((priority) => <option key={priority}>{priority}</option>)}</select></Field>
         <Field label="Tags" className="md:col-span-2"><input className={inputClass} placeholder="Rotina, Operação, Atendimento" value={draft.tags.join(', ')} onChange={(event) => onChange({ ...draft, tags: parseTags(event.target.value) })} /></Field>
@@ -1129,21 +1149,48 @@ function normalizeRoutineDraft(draft: RoutineDraft, members: TeamMember[], profi
   };
 }
 
-function getRoutineNextDate(routine: Pick<TeamRoutine, 'startDate' | 'frequency'>) {
-  if (!routine.startDate) return new Date().toISOString().slice(0, 10);
+function isRoutineDueToday(routine: TeamRoutine) {
+  if (routine.active === false) return false;
 
   const today = startOfDay(new Date());
-  const start = startOfDay(new Date(`${routine.startDate}T00:00:00`));
+  const start = startOfDay(new Date(`${routine.startDate || toLocalDateInputValue(today)}T00:00:00`));
+  if (start > today) return false;
 
-  if (routine.frequency === 'daily' || start >= today) {
-    return (start >= today ? start : today).toISOString().slice(0, 10);
+  if (routine.frequency === 'weekly') {
+    return getRoutineWeekday(routine) === today.getDay();
   }
 
-  const next = new Date(today);
-  const targetDay = start.getDay();
-  const daysUntil = (targetDay - today.getDay() + 7) % 7;
-  next.setDate(today.getDate() + daysUntil);
-  return next.toISOString().slice(0, 10);
+  return true;
+}
+
+function isRoutineCompletedForCurrentOccurrence(routine: TeamRoutine) {
+  return (routine.completedOccurrences ?? []).includes(getRoutineOccurrenceKey(routine));
+}
+
+function getRoutineOccurrenceKey(routine: TeamRoutine) {
+  return `${routine.id}:${toLocalDateInputValue(new Date())}`;
+}
+
+function getRoutineNextDate(routine: Pick<TeamRoutine, 'startDate' | 'frequency' | 'weekdays'>) {
+  const today = startOfDay(new Date());
+  const start = startOfDay(new Date(`${routine.startDate || toLocalDateInputValue(today)}T00:00:00`));
+
+  if (routine.frequency !== 'weekly') {
+    return toLocalDateInputValue(start > today ? start : today);
+  }
+
+  const targetDay = getRoutineWeekday(routine);
+  const base = start > today ? start : today;
+  const next = new Date(base);
+  const daysUntil = (targetDay - base.getDay() + 7) % 7;
+  next.setDate(base.getDate() + daysUntil);
+  return toLocalDateInputValue(next);
+}
+
+function getRoutineWeekday(routine: Pick<TeamRoutine, 'startDate' | 'weekdays'>) {
+  if (routine.weekdays?.length) return routine.weekdays[0];
+  if (routine.startDate) return new Date(`${routine.startDate}T00:00:00`).getDay();
+  return new Date().getDay();
 }
 
 function getRoutineSortValue(routine: TeamRoutine) {
@@ -1151,8 +1198,20 @@ function getRoutineSortValue(routine: TeamRoutine) {
   return new Date(`${nextDate}T${routine.time || '23:59'}:00`).getTime();
 }
 
-function formatRoutineFrequency(frequency: RoutineFrequency) {
-  return frequency === 'daily' ? 'diária' : 'semanal';
+function formatRoutineSchedule(routine: TeamRoutine) {
+  if (routine.frequency === 'weekly') {
+    const weekday = weekdayOptions.find((option) => option.value === getRoutineWeekday(routine))?.label ?? 'Sem dia';
+    return `${weekday}, ${routine.time || '--:--'}`;
+  }
+
+  return `diária às ${routine.time || '--:--'}`;
+}
+
+function toLocalDateInputValue(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function parseTags(value: string) {

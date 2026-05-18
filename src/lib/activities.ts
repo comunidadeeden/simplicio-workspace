@@ -7,6 +7,7 @@ import {
   orderBy,
   query,
   serverTimestamp,
+  setDoc,
   where,
   updateDoc,
   type FirestoreError,
@@ -37,6 +38,8 @@ export interface TeamRoutine {
   startDate: string;
   time: string;
   frequency: RoutineFrequency;
+  weekdays: number[];
+  completedOccurrences: string[];
   notes: string;
   tags: string[];
   active: boolean;
@@ -134,8 +137,17 @@ export function subscribeTasks(profile: UserProfile, onChange: (tasks: TeamTask[
 
 export function subscribeTeamMembers(onChange: (members: TeamMember[]) => void, onError: (error: FirestoreError) => void) {
   return onSnapshot(
-    query(collection(db, 'teamMembers'), orderBy('name', 'asc')),
-    (snapshot) => onChange(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }) as TeamMember)),
+    query(collection(db, 'allowedUsers'), orderBy('name', 'asc')),
+    (snapshot) => onChange(snapshot.docs.map((item) => {
+      const data = item.data();
+      return {
+        id: item.id,
+        name: data.name || data.email || item.id,
+        role: data.role === 'admin' ? 'Admin' : 'Colaborador',
+        capacity: 1,
+        email: data.email || item.id,
+      } as TeamMember;
+    })),
     onError,
   );
 }
@@ -192,5 +204,14 @@ export async function removeRoutine(id: string) {
 }
 
 export async function createTeamMember(member: MemberDraft) {
-  await addDoc(collection(db, 'teamMembers'), member);
+  const normalizedEmail = member.email.trim().toLowerCase();
+  if (!normalizedEmail) return;
+
+  await setDoc(doc(db, 'allowedUsers', normalizedEmail), {
+    email: normalizedEmail,
+    name: member.name.trim() || normalizedEmail,
+    role: 'collaborator',
+    active: true,
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
 }

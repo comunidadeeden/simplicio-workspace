@@ -19,7 +19,7 @@ export function Dashboard() {
   const [traffic, setTraffic] = useState<TrafficSpendPoint[]>([]);
   const [status, setStatus] = useState<LoadStatus>('loading');
   const [sheetMessage, setSheetMessage] = useState('Carregando planilhas configuradas...');
-  const [productFilters, setProductFilters] = useState<string[]>(['Workshop', 'Éden']);
+  const [productFilters, setProductFilters] = useState<string[]>(['Workshop']);
   const [accountFilter, setAccountFilter] = useState('Todas');
   const [customStart, setCustomStart] = useState(defaultDateRange.start);
   const [customEnd, setCustomEnd] = useState(defaultDateRange.end);
@@ -266,14 +266,14 @@ function ProductDropdown({ options, selected, onToggle, onClear }: { options: st
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="flex h-10 w-full items-center justify-between gap-3 rounded-lg border border-slate-800 bg-slate-950 px-3 text-left text-[12px] font-semibold text-slate-300 transition-colors hover:border-slate-700"
+        className="flex h-10 w-full items-center justify-between gap-3 rounded-lg border border-slate-300 bg-white px-3 text-left text-[12px] font-semibold text-slate-900 shadow-sm transition-colors hover:border-blue-400 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:border-slate-700"
       >
         <span className="min-w-0 truncate">{label}</span>
-        <span className="text-[10px] text-slate-600">Produto</span>
+        <span className="text-[10px] text-slate-500 dark:text-slate-600">Produto</span>
       </button>
       {open && (
-        <div className="absolute left-0 top-11 z-30 w-64 rounded-2xl border border-slate-800 bg-slate-950 p-2 shadow-2xl shadow-black/30">
-          <button type="button" onClick={onClear} className={cn('mb-1 flex w-full items-center justify-between rounded-lg px-3 py-2 text-[11px] font-semibold transition-colors', selected.length === 0 ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-100')}>
+        <div className="absolute left-0 top-11 z-30 w-64 rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl shadow-slate-900/12 dark:border-slate-800 dark:bg-slate-950 dark:shadow-black/30">
+          <button type="button" onClick={onClear} className={cn('mb-1 flex w-full items-center justify-between rounded-lg px-3 py-2 text-[11px] font-semibold transition-colors', selected.length === 0 ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-100')}>
             Todos os produtos
             {selected.length === 0 && <span className="font-mono text-[10px]">ativo</span>}
           </button>
@@ -285,10 +285,10 @@ function ProductDropdown({ options, selected, onToggle, onClear }: { options: st
                   key={item}
                   type="button"
                   onClick={() => onToggle(item)}
-                  className={cn('flex w-full items-center justify-between rounded-lg px-3 py-2 text-[11px] font-semibold transition-colors', active ? 'bg-blue-500/15 text-blue-200' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-100')}
+                  className={cn('flex w-full items-center justify-between rounded-lg px-3 py-2 text-[11px] font-semibold transition-colors', active ? 'border border-blue-500/40 bg-blue-600 text-white shadow-sm shadow-blue-600/15 dark:border-blue-400/30 dark:bg-blue-500/20 dark:text-blue-100' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-100')}
                 >
                   <span className="truncate">{item}</span>
-                  <span className={cn('h-2 w-2 rounded-full', active ? 'bg-blue-400' : 'bg-slate-800')} />
+                  <span className={cn('h-2 w-2 rounded-full', active ? 'bg-white dark:bg-blue-300' : 'bg-slate-300 dark:bg-slate-800')} />
                 </button>
               );
             })}

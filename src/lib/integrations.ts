@@ -128,7 +128,7 @@ export const defaultIntegrationSettings: IntegrationSettings = {
   cycle: defaultCycleSettings,
   webhook: {
     name: 'Atividades abertas - WhatsApp',
-    url: '',
+    url: 'https://n8n.vps1171.panel.speedfy.host/webhook/tasks',
     cadence: 'Diário às 08:30',
     includeOwners: true,
     includeDueDates: true,
@@ -473,7 +473,7 @@ function mergeSettings(settings: Partial<IntegrationSettings>): IntegrationSetti
     groupSources: normalizeGenericSources(settings.groupSources),
     liveSources: normalizeGenericSources(settings.liveSources),
     cycle: { ...defaultCycleSettings, ...settings.cycle },
-    webhook: { ...defaultIntegrationSettings.webhook, ...settings.webhook },
+    webhook: { ...defaultIntegrationSettings.webhook, ...settings.webhook, url: settings.webhook?.url || defaultIntegrationSettings.webhook.url },
   };
 }
 

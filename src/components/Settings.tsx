@@ -344,6 +344,30 @@ export function Settings() {
     setTestMessage(`Leitura OK: ${result.sales.length} vendas, ${result.traffic.length} linhas de tráfego, ${result.groups.length} linhas de grupo e ${result.lives.length} linhas de live importadas.`);
   };
 
+  const testWebhook = async () => {
+    const url = webhookDraft.url.trim() || defaultIntegrationSettings.webhook.url;
+    if (!url) {
+      setTestMessage('Informe a URL do webhook antes de testar.');
+      return;
+    }
+
+    const payload = buildWebhookTestPayload(webhookDraft);
+    setTestState('testing');
+    try {
+      await fetch(url, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+        body: JSON.stringify(payload),
+      });
+      setTestMessage('Teste enviado para o webhook com uma atividade exemplo. Confira a execução no n8n.');
+    } catch (error) {
+      setTestMessage(`Não foi possível enviar o teste: ${error instanceof Error ? error.message : 'erro desconhecido'}.`);
+    } finally {
+      setTestState('idle');
+    }
+  };
+
   return (
     <div className="mx-auto max-w-[1450px] space-y-6 p-10 text-slate-300">
       <section className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
@@ -422,7 +446,7 @@ export function Settings() {
           {modalMode === 'ads' && <AdForm draft={adDraft} onChange={setAdDraft} inspectState={inspectState} inspectMessage={inspectMessage} columns={detectedColumns} />}
           {modalMode === 'group' && <GenericSheetForm title="Dados do grupo" helper="Use essa conexão para importar entradas, presença, mensagens, engajamento ou qualquer dado do grupo que venha por planilha." draft={genericDraft} onChange={setGenericDraft} inspectState={inspectState} inspectMessage={inspectMessage} columns={detectedColumns} />}
           {modalMode === 'live' && <GenericSheetForm title="Dados da live" helper="Use essa conexão para importar presença, pico de audiência, cliques, comentários, retenção ou qualquer dado da live." draft={genericDraft} onChange={setGenericDraft} inspectState={inspectState} inspectMessage={inspectMessage} columns={detectedColumns} />}
-          {modalMode === 'webhook' && <WebhookForm draft={webhookDraft} onChange={setWebhookDraft} />}
+          {modalMode === 'webhook' && <WebhookForm draft={webhookDraft} onChange={setWebhookDraft} onTest={testWebhook} testState={testState} message={testMessage} />}
           {modalMode !== 'select' && <ModalActions onClose={closeModal} onSave={saveDraft} disabled={!canSave(modalMode, salesDraft, adDraft, genericDraft, webhookDraft)} />}
         </ConnectionModal>
       )}
@@ -466,8 +490,71 @@ function SheetInspection({ state, message, columns }: { state: InspectState; mes
 function extractGid(url: string, fallback = '0') {
   return url.match(/[?&#]gid=([0-9]+)/)?.[1] || fallback || '0';
 }
-function WebhookForm({ draft, onChange }: { draft: WebhookConfig; onChange: (draft: WebhookConfig) => void }) {
-  return <div className="space-y-4"><Field label="Nome"><input className={inputClass} value={draft.name} onChange={(event) => onChange({ ...draft, name: event.target.value })} /></Field><Field label="URL"><input className={inputClass} value={draft.url} onChange={(event) => onChange({ ...draft, url: event.target.value })} /></Field><Field label="Envio"><select className={inputClass} value={draft.cadence} onChange={(event) => onChange({ ...draft, cadence: event.target.value })}><option>Diário às 08:30</option><option>Diário às 18:00</option><option>Segunda, quarta e sexta</option><option>Manual</option></select></Field><div className="grid grid-cols-1 gap-3 md:grid-cols-2"><Toggle label="Incluir responsáveis" checked={draft.includeOwners} onChange={() => onChange({ ...draft, includeOwners: !draft.includeOwners })} /><Toggle label="Incluir prazos" checked={draft.includeDueDates} onChange={() => onChange({ ...draft, includeDueDates: !draft.includeDueDates })} /></div><button className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-blue-500/20 bg-blue-500/10 px-3 py-2 text-[11px] font-bold text-blue-300 transition-colors hover:text-blue-100"><BellRing size={13} />Testar webhook</button></div>;
+function WebhookForm({
+  draft,
+  onChange,
+  onTest,
+  testState,
+  message,
+}: {
+  draft: WebhookConfig;
+  onChange: (draft: WebhookConfig) => void;
+  onTest: () => void;
+  testState: 'idle' | 'testing';
+  message: string;
+}) {
+  return (
+    <div className="space-y-4">
+      <Field label="Nome"><input className={inputClass} value={draft.name} onChange={(event) => onChange({ ...draft, name: event.target.value })} /></Field>
+      <Field label="URL"><input className={inputClass} value={draft.url} onChange={(event) => onChange({ ...draft, url: event.target.value })} /></Field>
+      <Field label="Envio"><select className={inputClass} value={draft.cadence} onChange={(event) => onChange({ ...draft, cadence: event.target.value })}><option>Diário às 08:30</option><option>Diário às 18:00</option><option>Segunda, quarta e sexta</option><option>Manual</option></select></Field>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <Toggle label="Incluir responsáveis" checked={draft.includeOwners} onChange={() => onChange({ ...draft, includeOwners: !draft.includeOwners })} />
+        <Toggle label="Incluir prazos" checked={draft.includeDueDates} onChange={() => onChange({ ...draft, includeDueDates: !draft.includeDueDates })} />
+      </div>
+      <div className="rounded-xl border border-slate-900 bg-slate-950/70 p-3 text-[11px] leading-5 text-slate-500">
+        O teste envia uma atividade exemplo para o n8n, no mesmo formato que a automação vai usar para mandar atividades abertas.
+      </div>
+      <button
+        type="button"
+        onClick={onTest}
+        disabled={testState === 'testing' || !draft.url.trim()}
+        className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-blue-500/20 bg-blue-500/10 px-3 py-2 text-[11px] font-bold text-blue-300 transition-colors hover:text-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        <BellRing size={13} className={cn(testState === 'testing' && 'animate-pulse')} />
+        {testState === 'testing' ? 'Enviando teste' : 'Testar webhook com atividade'}
+      </button>
+      <p className="rounded-lg border border-amber-500/15 bg-amber-500/[0.04] px-3 py-2 text-[11px] leading-5 text-amber-200">{message}</p>
+    </div>
+  );
+}
+
+
+function buildWebhookTestPayload(config: WebhookConfig) {
+  const today = new Date().toISOString().slice(0, 10);
+  const activity = {
+    id: `test-${Date.now()}`,
+    title: 'Atividade de teste do webhook',
+    project: 'Simplicio Workspace',
+    status: 'Em andamento',
+    priority: 'Alta',
+    owner: config.includeOwners ? 'Gustavo Correa' : undefined,
+    ownerEmail: config.includeOwners ? 'gu.correa98@gmail.com' : undefined,
+    dueDate: config.includeDueDates ? today : undefined,
+    notes: 'Mensagem automática de teste enviada pela tela de Configurações.',
+  };
+
+  return {
+    event: 'activity.test',
+    source: 'simplicio-workspace',
+    sentAt: new Date().toISOString(),
+    webhook: {
+      name: config.name,
+      cadence: config.cadence,
+    },
+    activity,
+    activities: [activity],
+  };
 }
 
 function ConnectionRow({ item, index, canRemove, onEdit, onRemove }: { item: ConnectionItem; index: number; canRemove: boolean; onEdit: () => void; onRemove: () => void }) {

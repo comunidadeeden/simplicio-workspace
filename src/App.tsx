@@ -12,8 +12,9 @@ import { Settings } from './components/Settings';
 import { Finance } from './components/Finance';
 import { Launches } from './components/Launches';
 import { Leads } from './components/Leads';
+import { Team } from './components/Team';
 import { LoginScreen } from './components/LoginScreen';
-import { loadOrCreateProfile, watchAuth, type AccessStatus, type UserProfile } from './lib/auth';
+import { hasPageAccess, loadOrCreateProfile, watchAuth, type AccessStatus, type AppPage, type UserProfile } from './lib/auth';
 
 type ThemeMode = 'dark' | 'light';
 
@@ -62,14 +63,23 @@ export default function App() {
 
   const renderPage = () => {
     if (!userProfile) return null;
+    const page = activePage as AppPage;
+    if (!hasPageAccess(userProfile, page)) return <Dashboard />;
     if (activePage === 'activities') return <Activities userProfile={userProfile} />;
     if (activePage === 'settings') return <Settings userProfile={userProfile} />;
-    if (activePage === 'finance') return userProfile.role === 'admin' ? <Finance /> : <Activities userProfile={userProfile} />;
-    if (activePage === 'launches') return userProfile.role === 'admin' ? <Launches /> : <Activities userProfile={userProfile} />;
-    if (activePage === 'leads') return userProfile.role === 'admin' ? <Leads /> : <Activities userProfile={userProfile} />;
+    if (activePage === 'finance') return <Finance />;
+    if (activePage === 'launches') return <Launches />;
+    if (activePage === 'leads') return <Leads />;
+    if (activePage === 'team') return <Team userProfile={userProfile} />;
 
     return <Dashboard />;
   };
+
+  useEffect(() => {
+    if (userProfile && !hasPageAccess(userProfile, activePage as AppPage)) {
+      setActivePage('dashboard');
+    }
+  }, [activePage, userProfile]);
 
   if (accessStatus !== 'authorized' || !userProfile) {
     return <LoginScreen status={accessStatus} />;
@@ -82,7 +92,7 @@ export default function App() {
         setIsCollapsed={setIsSidebarCollapsed}
         activePage={activePage}
         setActivePage={setActivePage}
-        userRole={userProfile.role}
+        userProfile={userProfile}
       />
       <div className="flex-1 flex flex-col h-screen overflow-hidden relative">
         <TopNav

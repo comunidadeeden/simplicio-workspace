@@ -105,7 +105,7 @@ const weekdayOptions = [
   { value: 0, label: 'Domingo' },
 ];
 
-export function Activities({ userProfile }: { userProfile: UserProfile }) {
+export function Activities({ userProfile, embedded = false }: { userProfile: UserProfile; embedded?: boolean }) {
   const isAdmin = userProfile.role === 'admin';
   const [tasks, setTasks] = useState<TeamTask[]>(isAdmin ? defaultTasks : []);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>(defaultTeamMembers);
@@ -377,8 +377,8 @@ export function Activities({ userProfile }: { userProfile: UserProfile }) {
   };
 
   return (
-    <div className="mx-auto max-w-[1500px] space-y-6 p-10 text-slate-300">
-      <section className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+    <div className={cn('mx-auto max-w-[1500px] space-y-6 text-slate-300', embedded ? 'p-4' : 'p-10')}>
+      {!embedded && <section className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-widest text-blue-400">Operação da equipe</p>
           <h1 className="mt-2 text-xl font-display font-bold tracking-tight text-slate-100">Atividades</h1>
@@ -414,7 +414,7 @@ export function Activities({ userProfile }: { userProfile: UserProfile }) {
             Nova atividade
           </button>
         </div>
-      </section>
+      </section>}
 
 
       <FocusRail

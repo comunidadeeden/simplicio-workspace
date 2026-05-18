@@ -11,13 +11,14 @@ import {
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { cn } from '../lib/utils';
+import { hasPageAccess, type AppPage, type UserProfile } from '../lib/auth';
 
 interface SidebarProps {
   isCollapsed: boolean;
   setIsCollapsed: (value: boolean) => void;
   activePage: string;
   setActivePage: (value: string) => void;
-  userRole: 'admin' | 'collaborator';
+  userProfile: UserProfile;
 }
 
 const NAV_ITEMS = [
@@ -26,10 +27,11 @@ const NAV_ITEMS = [
   { icon: PieChart, label: 'Financeiro', id: 'finance' },
   { icon: Rocket, label: 'Lançamentos', id: 'launches' },
   { icon: Users, label: 'Leads', id: 'leads' },
+  { icon: Users, label: 'Equipe', id: 'team' },
 ];
 
-export function Sidebar({ isCollapsed, setIsCollapsed, activePage, setActivePage, userRole }: SidebarProps) {
-  const visibleItems = userRole === 'admin' ? NAV_ITEMS : NAV_ITEMS.filter((item) => ['dashboard', 'activities'].includes(item.id));
+export function Sidebar({ isCollapsed, setIsCollapsed, activePage, setActivePage, userProfile }: SidebarProps) {
+  const visibleItems = NAV_ITEMS.filter((item) => hasPageAccess(userProfile, item.id as AppPage));
   return (
     <motion.aside
       initial={false}
@@ -83,7 +85,7 @@ export function Sidebar({ isCollapsed, setIsCollapsed, activePage, setActivePage
         })}
       </nav>
 
-      {userRole === 'admin' && (
+      {hasPageAccess(userProfile, 'settings') && (
       <div className="p-3 border-t border-slate-900/50">
         <button
           onClick={() => setActivePage('settings')}

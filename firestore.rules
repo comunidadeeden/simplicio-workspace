@@ -21,8 +21,16 @@ service cloud.firestore {
       return isAdminEmail() || (isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && userDoc().role == 'admin');
     }
 
+    function allowedUserDoc() {
+      return get(/databases/$(database)/documents/allowedUsers/$(email())).data;
+    }
+
     function isAllowedCollaborator() {
-      return isSignedIn() && exists(/databases/$(database)/documents/allowedUsers/$(email())) && get(/databases/$(database)/documents/allowedUsers/$(email())).data.active == true;
+      return isSignedIn() && exists(/databases/$(database)/documents/allowedUsers/$(email())) && allowedUserDoc().active == true;
+    }
+
+    function hasPermission(page) {
+      return isAdmin() || (isAllowedCollaborator() && page in allowedUserDoc().permissions);
     }
 
     function canAccessApp() {
@@ -75,7 +83,8 @@ service cloud.firestore {
     }
 
     match /financeExpenses/{expenseId} {
-      allow read, write: if isAdmin();
+      allow read: if hasPermission('finance');
+      allow write: if isAdmin();
     }
 
     match /integrationSettings/{settingId} {

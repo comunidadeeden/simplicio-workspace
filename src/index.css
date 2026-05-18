@@ -160,3 +160,56 @@
     background-color: #94a3b8;
   }
 }
+
+
+@layer utilities {
+  .theme-light .text-blue-300,
+  .theme-light .text-blue-400,
+  .theme-light .text-blue-500 {
+    color: #1d4ed8 !important;
+  }
+
+  .theme-light .text-sky-300,
+  .theme-light .text-sky-400,
+  .theme-light .text-sky-500 {
+    color: #0369a1 !important;
+  }
+
+  .theme-light .text-emerald-300,
+  .theme-light .text-emerald-400,
+  .theme-light .text-green-300,
+  .theme-light .text-green-400 {
+    color: #047857 !important;
+  }
+
+  .theme-light .text-amber-300,
+  .theme-light .text-amber-400 {
+    color: #b45309 !important;
+  }
+
+  .theme-light .text-rose-300,
+  .theme-light .text-rose-400,
+  .theme-light .text-red-300,
+  .theme-light .text-red-400 {
+    color: #be123c !important;
+  }
+
+  .theme-light .text-white {
+    color: #ffffff !important;
+  }
+
+  .theme-light .bg-blue-600,
+  .theme-light .hover\:bg-blue-500:hover {
+    background-color: #2563eb !important;
+  }
+
+  .theme-light input,
+  .theme-light select,
+  .theme-light textarea {
+    color: #0f172a;
+  }
+
+  .theme-light .divide-slate-900 > :not([hidden]) ~ :not([hidden]) {
+    border-color: rgba(148, 163, 184, 0.28) !important;
+  }
+}

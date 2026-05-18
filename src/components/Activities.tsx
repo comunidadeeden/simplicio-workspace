@@ -388,7 +388,6 @@ export function Activities({ userProfile }: { userProfile: UserProfile }) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <SyncBadge status={syncStatus}>{syncMessage}</SyncBadge>
           <HeaderCounter label="Minhas ativas" value={myActiveTasks} />
           <HeaderCounter label="Rotinas hoje" value={myDueRoutines} />
           <button
@@ -1093,11 +1092,6 @@ function Field({ label, className, children }: { label: string; className?: stri
 
 function IconButton({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
   return <button aria-label={label} title={label} onClick={onClick} className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-800 text-slate-500 transition-colors hover:text-slate-200">{children}</button>;
-}
-
-function SyncBadge({ status, children }: { status: SyncStatus; children: ReactNode }) {
-  const color = status === 'online' ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300' : status === 'local' ? 'border-amber-500/20 bg-amber-500/10 text-amber-300' : 'border-slate-800 bg-slate-900 text-slate-400';
-  return <span className={cn('max-w-[320px] truncate rounded border px-2 py-1 text-[10px] font-bold', color)} title={typeof children === 'string' ? children : undefined}>{children}</span>;
 }
 
 function EmptyState({ onNewTask }: { onNewTask: () => void }) {

@@ -135,9 +135,8 @@ export function Dashboard() {
           <div className="flex flex-wrap items-center gap-2 xl:justify-end">
             <select className="h-9 rounded-lg border border-slate-800 bg-slate-950 px-3 text-[12px] text-slate-300 outline-none focus:ring-1 focus:ring-blue-600" value={cycleMode} onChange={(event) => setCycleMode(event.target.value as 'operation' | 'cycle')} aria-label="Modo de ciclo">
               <option value="operation">Operação atual</option>
-              <option value="cycle">Resultado do ciclo</option>
+              <option value="cycle">Ciclo selecionado</option>
             </select>
-            {cycleMode === 'cycle' && <select className="h-9 rounded-lg border border-slate-800 bg-slate-950 px-3 text-[12px] text-slate-300 outline-none focus:ring-1 focus:ring-blue-600" value={selectedCycle?.id ?? ''} onChange={(event) => setSelectedCycleId(event.target.value)} aria-label="Ciclo">{cycleOptions.map((cycle) => <option key={cycle.id} value={cycle.id}>{getCycleLabel(cycle)}</option>)}</select>}
             <ProductFilterChips options={productOptions} selected={productFilters} onToggle={toggleProductFilter} onClear={() => setProductFilters([])} />
 
             <button
@@ -158,6 +157,20 @@ export function Dashboard() {
           </div>
         </div>
       </div>
+
+      <CycleCalendarPicker
+        cycles={cycleOptions}
+        selectedId={cycleMode === 'operation' ? 'operation' : selectedCycle?.id ?? ''}
+        operationLabel={`Atual: ${operationWindows.workshop.workshop}`}
+        onSelect={(id) => {
+          if (id === 'operation') {
+            setCycleMode('operation');
+            return;
+          }
+          setCycleMode('cycle');
+          setSelectedCycleId(id);
+        }}
+      />
 
       {showFilters && (
         <section className="rounded-2xl border border-slate-900/60 bg-slate-950 p-4">
@@ -252,6 +265,59 @@ function CycleInfoCard({ title, detail, range, value, amount }: { title: string;
 function StatusBanner({ status, message }: { status: LoadStatus; message: string }) {
   const tone = status === 'ready' ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-200' : status === 'loading' ? 'border-slate-800 bg-slate-950 text-slate-400' : 'border-amber-500/20 bg-amber-500/10 text-amber-200';
   return <div className={cn('max-w-xl rounded-lg border px-3 py-2 text-[11px] font-semibold leading-5', tone)}>{status === 'loading' && <RefreshCw size={12} className="mr-2 inline animate-spin" />}{message}</div>;
+}
+
+
+function CycleCalendarPicker({
+  cycles,
+  selectedId,
+  operationLabel,
+  onSelect,
+}: {
+  cycles: ReturnType<typeof getRecentCycles>;
+  selectedId: string;
+  operationLabel: string;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <section className="rounded-2xl border border-slate-900/60 bg-slate-950 p-4">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-[12px] font-semibold text-slate-200">
+          <CalendarDays size={14} className="text-blue-400" />
+          Ciclos do lançamento
+        </div>
+        <button
+          onClick={() => onSelect('operation')}
+          className={cn(
+            'rounded-lg border px-3 py-1.5 text-[11px] font-semibold transition-colors',
+            selectedId === 'operation' ? 'border-blue-500/40 bg-blue-500/10 text-blue-300' : 'border-slate-800 text-slate-500 hover:text-slate-200',
+          )}
+        >
+          {operationLabel}
+        </button>
+      </div>
+      <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
+        {cycles.slice(0, 8).map((cycle) => {
+          const windows = describeCycleWindows(cycle);
+          const selected = selectedId === cycle.id;
+          return (
+            <button
+              key={cycle.id}
+              onClick={() => onSelect(cycle.id)}
+              className={cn(
+                'rounded-xl border p-3 text-left transition-colors',
+                selected ? 'border-blue-500/40 bg-blue-500/10' : 'border-slate-900 bg-slate-950/70 hover:border-slate-800',
+              )}
+            >
+              <p className={cn('text-[12px] font-bold', selected ? 'text-blue-300' : 'text-slate-200')}>{getCycleLabel(cycle)}</p>
+              <p className="mt-2 text-[10px] leading-4 text-slate-500">Workshop: {windows.workshop}</p>
+              <p className="text-[10px] leading-4 text-slate-500">Éden: {windows.eden}</p>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
 }
 
 function MetricCard({ label, value, icon: Icon, tone }: { label: string; value: string; icon: typeof TrendingUp; tone: 'blue' | 'green' | 'amber' | 'rose' }) {

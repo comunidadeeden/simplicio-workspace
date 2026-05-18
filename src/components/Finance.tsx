@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { motion } from 'motion/react';
-import { Area, AreaChart, Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import {
   AlertTriangle,
   Banknote,
@@ -56,6 +56,8 @@ export function Finance() {
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('connecting');
   const [syncMessage, setSyncMessage] = useState('Conectando ao Firebase...');
   const [view, setView] = useState<FinanceView>('overview');
+  const [dateStart, setDateStart] = useState(getMonthStart());
+  const [dateEnd, setDateEnd] = useState(getToday());
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('Todas');
   const [statusFilter, setStatusFilter] = useState<ExpenseStatus | 'Todos'>('Todos');
@@ -98,21 +100,24 @@ export function Finance() {
   }, []);
 
   const allExpenses = useMemo(() => [...trafficExpenses, ...expenses], [expenses, trafficExpenses]);
-  const trafficGross = sum(trafficExpenses.map((expense) => expense.rawAmount ?? 0));
-  const trafficTax = sum(trafficExpenses.map((expense) => expense.taxAmount ?? 0));
-  const trafficTotal = sum(trafficExpenses.map((expense) => expense.amount));
-  const totalRevenue = sum(revenue.map((item) => item.revenue));
-  const paidExpenses = sum(allExpenses.filter((expense) => expense.status === 'Paga').map((expense) => expense.amount));
-  const openExpenses = sum(allExpenses.filter((expense) => expense.status === 'Aberta').map((expense) => expense.amount));
-  const fixedExpenses = sum(allExpenses.filter((expense) => expense.isRecurring).map((expense) => expense.amount));
+  const filteredRevenueByDate = useMemo(() => revenue.filter((item) => matchesDate(item.date, dateStart, dateEnd)), [dateEnd, dateStart, revenue]);
+  const filteredExpensesByDate = useMemo(() => allExpenses.filter((expense) => matchesDate(expense.dueDate, dateStart, dateEnd)), [allExpenses, dateEnd, dateStart]);
+  const trafficExpensesInPeriod = useMemo(() => trafficExpenses.filter((expense) => matchesDate(expense.dueDate, dateStart, dateEnd)), [dateEnd, dateStart, trafficExpenses]);
+  const trafficGross = sum(trafficExpensesInPeriod.map((expense) => expense.rawAmount ?? 0));
+  const trafficTax = sum(trafficExpensesInPeriod.map((expense) => expense.taxAmount ?? 0));
+  const trafficTotal = sum(trafficExpensesInPeriod.map((expense) => expense.amount));
+  const totalRevenue = sum(filteredRevenueByDate.map((item) => item.revenue));
+  const paidExpenses = sum(filteredExpensesByDate.filter((expense) => expense.status === 'Paga').map((expense) => expense.amount));
+  const openExpenses = sum(filteredExpensesByDate.filter((expense) => expense.status === 'Aberta').map((expense) => expense.amount));
+  const fixedExpenses = sum(filteredExpensesByDate.filter((expense) => expense.isRecurring).map((expense) => expense.amount));
   const projectedBalance = totalRevenue - paidExpenses - openExpenses;
   const realizedBalance = totalRevenue - paidExpenses;
   const margin = totalRevenue ? Math.round((projectedBalance / totalRevenue) * 100) : 0;
-  const overdue = allExpenses.filter((expense) => expense.status === 'Aberta' && isOverdue(expense.dueDate));
+  const overdue = filteredExpensesByDate.filter((expense) => expense.status === 'Aberta' && isOverdue(expense.dueDate));
 
   const filteredExpenses = useMemo(() => {
     const term = search.trim().toLowerCase();
-    return allExpenses.filter((expense) => {
+    return filteredExpensesByDate.filter((expense) => {
       const matchesSearch = !term || [expense.description, expense.category, expense.paymentMethod, expense.notes].some((value) => value.toLowerCase().includes(term));
       const matchesCategory = categoryFilter === 'Todas' || expense.category === categoryFilter;
       const matchesStatus = statusFilter === 'Todos' || expense.status === statusFilter;
@@ -120,20 +125,17 @@ export function Finance() {
       const matchesView = view !== 'recurring' || expense.isRecurring;
       return matchesSearch && matchesCategory && matchesStatus && matchesKind && matchesView;
     });
-  }, [allExpenses, categoryFilter, kindFilter, search, statusFilter, view]);
+  }, [categoryFilter, filteredExpensesByDate, kindFilter, search, statusFilter, view]);
 
   const categoryData = useMemo(() => {
-    const groups = allExpenses.reduce<Record<string, number>>((acc, expense) => {
+    const groups = filteredExpensesByDate.reduce<Record<string, number>>((acc, expense) => {
       acc[expense.category] = (acc[expense.category] ?? 0) + expense.amount;
       return acc;
     }, {});
     return Object.entries(groups).map(([name, value]) => ({ name, value }));
-  }, [allExpenses]);
+  }, [filteredExpensesByDate]);
 
-  const cashFlow = revenue.map((point) => {
-    const dayExpenses = allExpenses.filter((expense) => expense.dueDate === point.date).reduce((total, expense) => total + expense.amount, 0);
-    return { name: point.label, entradas: point.revenue, saidas: dayExpenses, saldo: point.revenue - dayExpenses };
-  });
+
 
   const openNewExpense = () => {
     setEditingExpense(null);
@@ -235,8 +237,7 @@ export function Finance() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <SyncBadge status={syncStatus}>{syncMessage}</SyncBadge>
-          <SyncBadge status={trafficExpenses.length ? 'online' : 'local'}>{sheetMessage}</SyncBadge>
+          <DateRangeControl start={dateStart} end={dateEnd} onStart={setDateStart} onEnd={setDateEnd} />
           <button onClick={openNewExpense} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-[11px] font-bold text-white transition-colors hover:bg-blue-500">
             <Plus size={13} />
             Lançar saída
@@ -253,30 +254,16 @@ export function Finance() {
 
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-12">
         <div className="space-y-6 xl:col-span-8">
-          <div className="rounded-2xl border border-slate-900/50 bg-slate-950 p-5">
-            <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <h2 className="text-sm font-semibold text-slate-200">Fluxo do mês</h2>
-                <p className="mt-1 text-[11px] text-slate-500">Entradas importadas versus saídas manuais e tráfego com imposto.</p>
-              </div>
-              <ViewSwitcher value={view} onChange={setView} />
-            </div>
-            <div className="h-[320px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={cashFlow}>
-                  <defs>
-                    <linearGradient id="financeIn" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#22c55e" stopOpacity={0.16}/><stop offset="95%" stopColor="#22c55e" stopOpacity={0}/></linearGradient>
-                    <linearGradient id="financeOut" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#ef4444" stopOpacity={0.12}/><stop offset="95%" stopColor="#ef4444" stopOpacity={0}/></linearGradient>
-                  </defs>
-                  <XAxis dataKey="name" stroke="#334155" fontSize={10} tickLine={false} axisLine={false} />
-                  <YAxis hide />
-                  <Tooltip contentStyle={{ backgroundColor: '#020617', border: '1px solid #1e293b', borderRadius: '8px', fontSize: '11px' }} formatter={(value) => money.format(Number(value))} />
-                  <Area type="monotone" dataKey="entradas" stroke="#22c55e" strokeWidth={2} fill="url(#financeIn)" />
-                  <Area type="monotone" dataKey="saidas" stroke="#ef4444" strokeWidth={2} fill="url(#financeOut)" />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
+          <FinanceSnapshot
+            totalRevenue={totalRevenue}
+            paidExpenses={paidExpenses}
+            openExpenses={openExpenses}
+            projectedBalance={projectedBalance}
+            trafficTotal={trafficTotal}
+            overdueCount={overdue.length}
+            view={view}
+            onView={setView}
+          />
 
           <ExpensePanel
             view={view}
@@ -311,7 +298,7 @@ export function Finance() {
               <SummaryLine label="Tráfego bruto" value={money.format(trafficGross)} />
               <SummaryLine label="Imposto tráfego" value={money.format(trafficTax)} />
               <SummaryLine label="Fixas mensais" value={money.format(fixedExpenses)} />
-              <SummaryLine label="Ticket médio" value={money.format(totalRevenue / Math.max(sum(revenue.map((item) => item.orders)), 1))} />
+              <SummaryLine label="Ticket médio" value={money.format(totalRevenue / Math.max(sum(filteredRevenueByDate.map((item) => item.orders)), 1))} />
             </div>
           </div>
 
@@ -353,6 +340,67 @@ export function Finance() {
           onSave={saveExpense}
         />
       )}
+    </div>
+  );
+}
+
+
+function DateRangeControl({ start, end, onStart, onEnd }: { start: string; end: string; onStart: (value: string) => void; onEnd: (value: string) => void }) {
+  return (
+    <div className="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 p-1.5">
+      <CalendarDays size={14} className="ml-1 text-blue-400" />
+      <input className="h-7 rounded-md border border-slate-800 bg-slate-950 px-2 text-[11px] text-slate-300 outline-none focus:ring-1 focus:ring-blue-600" type="date" value={start} onChange={(event) => onStart(event.target.value)} aria-label="Início do período" />
+      <span className="text-[10px] text-slate-600">até</span>
+      <input className="h-7 rounded-md border border-slate-800 bg-slate-950 px-2 text-[11px] text-slate-300 outline-none focus:ring-1 focus:ring-blue-600" type="date" value={end} onChange={(event) => onEnd(event.target.value)} aria-label="Fim do período" />
+    </div>
+  );
+}
+
+function FinanceSnapshot({
+  totalRevenue,
+  paidExpenses,
+  openExpenses,
+  projectedBalance,
+  trafficTotal,
+  overdueCount,
+  view,
+  onView,
+}: {
+  totalRevenue: number;
+  paidExpenses: number;
+  openExpenses: number;
+  projectedBalance: number;
+  trafficTotal: number;
+  overdueCount: number;
+  view: FinanceView;
+  onView: (value: FinanceView) => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-900/50 bg-slate-950 p-5">
+      <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-200">Acompanhamento rápido</h2>
+          <p className="mt-1 text-[11px] text-slate-500">Leitura simples do período selecionado.</p>
+        </div>
+        <ViewSwitcher value={view} onChange={onView} />
+      </div>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <SnapshotItem label="Entrou" value={money.format(totalRevenue)} tone="text-emerald-400" />
+        <SnapshotItem label="Saiu pago" value={money.format(paidExpenses)} tone="text-blue-400" />
+        <SnapshotItem label="Ainda aberto" value={money.format(openExpenses)} tone="text-amber-300" />
+        <SnapshotItem label="Tráfego" value={money.format(trafficTotal)} tone="text-sky-400" />
+        <SnapshotItem label="Saldo previsto" value={money.format(projectedBalance)} tone={projectedBalance >= 0 ? 'text-emerald-400' : 'text-rose-300'} />
+        <SnapshotItem label="Atrasadas" value={String(overdueCount)} tone={overdueCount ? 'text-rose-300' : 'text-slate-300'} />
+      </div>
+    </div>
+  );
+}
+
+function SnapshotItem({ label, value, tone }: { label: string; value: string; tone: string }) {
+  return (
+    <div className="rounded-xl border border-slate-900 bg-slate-950/70 p-4">
+      <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">{label}</p>
+      <p className={cn('mt-2 font-mono text-lg font-bold tracking-tighter', tone)}>{value}</p>
     </div>
   );
 }
@@ -537,6 +585,21 @@ function Modal({ title, children, onClose }: { title: string; children: ReactNod
 function SyncBadge({ status, children }: { status: SyncStatus; children: ReactNode }) {
   const color = status === 'online' ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300' : status === 'local' ? 'border-amber-500/20 bg-amber-500/10 text-amber-300' : 'border-slate-800 bg-slate-900 text-slate-400';
   return <span className={cn('max-w-[320px] truncate rounded border px-2 py-1 text-[10px] font-bold', color)} title={typeof children === 'string' ? children : undefined}>{children}</span>;
+}
+
+
+function matchesDate(date: string, start: string, end: string) {
+  if (!date) return true;
+  return (!start || date >= start) && (!end || date <= end);
+}
+
+function getToday() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function getMonthStart() {
+  const today = new Date();
+  return new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
 }
 
 function sum(values: number[]) { return values.reduce((total, value) => total + value, 0); }

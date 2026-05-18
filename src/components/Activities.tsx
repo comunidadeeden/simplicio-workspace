@@ -15,25 +15,30 @@ import {
   Search,
   Trash2,
   UserPlus,
-  Users,
   X,
 } from 'lucide-react';
 import {
   createTask,
+  createRoutine,
   createTeamMember,
   defaultTasks,
   defaultTeamMembers,
+  removeRoutine,
   removeTask,
+  subscribeRoutines,
   subscribeTasks,
   subscribeTeamMembers,
   taskPriorities,
   taskStatuses,
   updateTask,
   type MemberDraft,
+  type RoutineDraft,
+  type RoutineFrequency,
   type TaskDraft,
   type TaskPriority,
   type TaskStatus,
   type TeamMember,
+  type TeamRoutine,
   type TeamTask,
 } from '../lib/activities';
 import type { UserProfile } from '../lib/auth';
@@ -57,10 +62,24 @@ const emptyTaskDraft: TaskDraft = {
   notes: '',
 };
 
+const emptyRoutineDraft: RoutineDraft = {
+  title: '',
+  project: '',
+  owner: '',
+  ownerEmail: '',
+  priority: 'Média',
+  startDate: new Date().toISOString().slice(0, 10),
+  time: '09:00',
+  frequency: 'daily',
+  notes: '',
+  tags: [],
+  active: true,
+};
+
 const emptyMemberDraft: MemberDraft = {
   name: '',
   role: '',
-  capacity: 6,
+  capacity: 1,
   email: '',
 };
 
@@ -78,6 +97,7 @@ export function Activities({ userProfile }: { userProfile: UserProfile }) {
   const isAdmin = userProfile.role === 'admin';
   const [tasks, setTasks] = useState<TeamTask[]>(isAdmin ? defaultTasks : []);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>(defaultTeamMembers);
+  const [routines, setRoutines] = useState<TeamRoutine[]>([]);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('connecting');
   const [syncMessage, setSyncMessage] = useState('Conectando ao Firebase...');
   const [viewMode, setViewMode] = useState<ViewMode>('board');
@@ -88,12 +108,13 @@ export function Activities({ userProfile }: { userProfile: UserProfile }) {
   const [ownerFilter, setOwnerFilter] = useState('Todos');
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('all');
   const [activeFocus, setActiveFocus] = useState<FocusFilter>('all');
-  const [quickTitle, setQuickTitle] = useState('');
   const [taskModalOpen, setTaskModalOpen] = useState(false);
   const [memberModalOpen, setMemberModalOpen] = useState(false);
+  const [routineModalOpen, setRoutineModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<TeamTask | null>(null);
   const [taskDraft, setTaskDraft] = useState<TaskDraft>(emptyTaskDraft);
   const [memberDraft, setMemberDraft] = useState<MemberDraft>(emptyMemberDraft);
+  const [routineDraft, setRoutineDraft] = useState<RoutineDraft>(emptyRoutineDraft);
 
   useEffect(() => {
     const unsubscribeTasks = subscribeTasks(
@@ -116,9 +137,16 @@ export function Activities({ userProfile }: { userProfile: UserProfile }) {
       () => undefined,
     ) : () => undefined;
 
+    const unsubscribeRoutines = subscribeRoutines(
+      userProfile,
+      (remoteRoutines) => setRoutines(remoteRoutines.sort((first, second) => getRoutineSortValue(first) - getRoutineSortValue(second))),
+      () => undefined,
+    );
+
     return () => {
       unsubscribeTasks();
       unsubscribeMembers();
+      unsubscribeRoutines();
     };
   }, [isAdmin, userProfile]);
 
@@ -150,10 +178,6 @@ export function Activities({ userProfile }: { userProfile: UserProfile }) {
   const completed = tasks.filter((task) => task.status === 'Concluído').length;
   const atRisk = tasks.filter((task) => task.priority === 'Alta' && task.status !== 'Concluído').length;
   const inProgress = tasks.filter((task) => task.status === 'Em andamento').length;
-  const usedCapacity = teamMembers.reduce((sum, member) => sum + getActiveTasks(tasks, member.name), 0);
-  const totalCapacity = teamMembers.reduce((sum, member) => sum + member.capacity, 0);
-  const capacityPercent = totalCapacity ? Math.min(Math.round((usedCapacity / totalCapacity) * 100), 100) : 0;
-
   const openNewTask = () => {
     setEditingTask(null);
     setTaskDraft(isAdmin ? { ...emptyTaskDraft, owner: teamMembers[0]?.name ?? '', ownerEmail: teamMembers[0]?.email ?? '' } : { ...emptyTaskDraft, owner: userProfile.name, ownerEmail: userProfile.email, status: 'Em andamento' });
@@ -197,6 +221,79 @@ export function Activities({ userProfile }: { userProfile: UserProfile }) {
     }
 
     setTaskModalOpen(false);
+  };
+
+  const openNewRoutine = () => {
+    const member = isAdmin ? teamMembers[0] : undefined;
+    setRoutineDraft({
+      ...emptyRoutineDraft,
+      owner: isAdmin ? member?.name ?? '' : userProfile.name,
+      ownerEmail: isAdmin ? member?.email ?? '' : userProfile.email,
+      startDate: new Date().toISOString().slice(0, 10),
+    });
+    setRoutineModalOpen(true);
+  };
+
+  const saveRoutine = async () => {
+    if (!routineDraft.title.trim()) return;
+
+    const normalizedRoutine = normalizeRoutineDraft(routineDraft, teamMembers, userProfile);
+
+    if (syncStatus === 'online') {
+      try {
+        await createRoutine(normalizedRoutine);
+      } catch (error) {
+        addLocalRoutine(normalizedRoutine);
+        setSyncStatus('local');
+        setSyncMessage(`Rotina salva localmente. Firebase recusou a gravação: ${getErrorMessage(error)}.`);
+      }
+    } else {
+      addLocalRoutine(normalizedRoutine);
+    }
+
+    setRoutineDraft(emptyRoutineDraft);
+    setRoutineModalOpen(false);
+  };
+
+  const createTaskFromRoutine = async (routine: TeamRoutine) => {
+    const dueDate = getRoutineNextDate(routine);
+    const task: TaskDraft = {
+      title: routine.title,
+      project: routine.project,
+      owner: routine.owner,
+      ownerEmail: routine.ownerEmail,
+      status: isAdmin ? 'Backlog' : 'Em andamento',
+      priority: routine.priority,
+      dueDate,
+      effort: routine.time ? routine.time : '',
+      tags: routine.tags,
+      notes: routine.notes,
+    };
+
+    if (syncStatus === 'online') {
+      try {
+        await createTask(task);
+        return;
+      } catch (error) {
+        setSyncStatus('local');
+        setSyncMessage(`Atividade da rotina salva localmente. Firebase recusou a gravação: ${getErrorMessage(error)}.`);
+      }
+    }
+
+    addLocalTask(task);
+  };
+
+  const deleteRoutine = async (routine: TeamRoutine) => {
+    setRoutines((current) => current.filter((item) => item.id !== routine.id));
+
+    if (syncStatus !== 'online' || routine.id.startsWith('local-')) return;
+
+    try {
+      await removeRoutine(routine.id);
+    } catch (error) {
+      setSyncStatus('local');
+      setSyncMessage(`Rotina removida localmente. Firebase recusou a exclusão: ${getErrorMessage(error)}.`);
+    }
   };
 
   const saveMember = async () => {
@@ -264,36 +361,12 @@ export function Activities({ userProfile }: { userProfile: UserProfile }) {
     setPeriodFilter('all');
   };
 
-  const createQuickTask = async () => {
-    const title = quickTitle.trim();
-    if (!title) return;
-
-    const quickTask: TaskDraft = {
-      ...emptyTaskDraft,
-      title,
-      owner: isAdmin ? teamMembers[0]?.name ?? '' : userProfile.name,
-      ownerEmail: isAdmin ? teamMembers[0]?.email ?? '' : userProfile.email,
-      status: isAdmin ? 'Backlog' : 'Em andamento',
-      dueDate: new Date().toISOString().slice(0, 10),
-    };
-
-    setQuickTitle('');
-
-    if (syncStatus === 'online') {
-      try {
-        await createTask(quickTask);
-        return;
-      } catch (error) {
-        setSyncStatus('local');
-        setSyncMessage(`Atividade rápida salva localmente. Firebase recusou a gravação: ${getErrorMessage(error)}.`);
-      }
-    }
-
-    addLocalTask(quickTask);
-  };
-
   const addLocalTask = (draft: TaskDraft) => {
     setTasks((current) => [{ id: `local-${Date.now()}`, ...draft }, ...current]);
+  };
+
+  const addLocalRoutine = (draft: RoutineDraft) => {
+    setRoutines((current) => [{ id: `local-routine-${Date.now()}`, ...draft }, ...current]);
   };
 
   const addLocalMember = (draft: MemberDraft) => {
@@ -307,7 +380,7 @@ export function Activities({ userProfile }: { userProfile: UserProfile }) {
           <p className="text-[11px] font-semibold uppercase tracking-widest text-blue-400">Operação da equipe</p>
           <h1 className="mt-2 text-xl font-display font-bold tracking-tight text-slate-100">Atividades</h1>
           <p className="mt-1 max-w-2xl text-[12px] leading-5 text-slate-500">
-            Planeje, filtre, mova e acompanhe as atividades com persistência no Firebase quando disponível.
+            Organize tarefas do dia, rotinas recorrentes e prioridades da equipe com controle por usuário.
           </p>
         </div>
 
@@ -339,7 +412,6 @@ export function Activities({ userProfile }: { userProfile: UserProfile }) {
         </div>
       </section>
 
-      <QuickCapture value={quickTitle} onChange={setQuickTitle} onCreate={createQuickTask} onOpenFull={openNewTask} />
 
       <FocusRail
         active={activeFocus}
@@ -348,12 +420,11 @@ export function Activities({ userProfile }: { userProfile: UserProfile }) {
         onChange={applyFocus}
       />
 
-      <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
         {[
           { label: 'Atividades ativas', value: tasks.length - completed, detail: `${inProgress} em execução`, icon: CheckCircle2 },
           { label: 'Prioridade alta', value: atRisk, detail: 'pedem acompanhamento', icon: Flag },
           { label: 'Concluídas', value: completed, detail: `${filteredTasks.length} visíveis`, icon: CalendarDays },
-          { label: 'Capacidade usada', value: `${capacityPercent}%`, detail: `${usedCapacity}/${totalCapacity || 0} tarefas`, icon: Users },
         ].map((stat, index) => {
           const Icon = stat.icon;
           return (
@@ -442,7 +513,7 @@ export function Activities({ userProfile }: { userProfile: UserProfile }) {
 
         <aside className="space-y-6 xl:col-span-3">
           <DailyQueue tasks={tasks} onEdit={openEditTask} onStatusChange={persistTaskPatch} />
-          <TeamLoad tasks={tasks} members={teamMembers} />
+          <RoutinePanel routines={routines} onCreate={createTaskFromRoutine} onDelete={deleteRoutine} onNew={openNewRoutine} />
           <AttentionPanel tasks={tasks} />
         </aside>
       </section>
@@ -459,6 +530,17 @@ export function Activities({ userProfile }: { userProfile: UserProfile }) {
         />
       )}
 
+      {routineModalOpen && (
+        <RoutineModal
+          draft={routineDraft}
+          members={teamMembers}
+          isAdmin={isAdmin}
+          onChange={setRoutineDraft}
+          onClose={() => setRoutineModalOpen(false)}
+          onSave={saveRoutine}
+        />
+      )}
+
       {isAdmin && memberModalOpen && (
         <MemberModal
           draft={memberDraft}
@@ -471,54 +553,6 @@ export function Activities({ userProfile }: { userProfile: UserProfile }) {
   );
 }
 
-
-function QuickCapture({
-  value,
-  onChange,
-  onCreate,
-  onOpenFull,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  onCreate: () => void;
-  onOpenFull: () => void;
-}) {
-  return (
-    <section className="rounded-2xl border border-slate-900/60 bg-slate-950 p-4">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-        <div className="min-w-0 flex-1">
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-slate-500">Captura rápida</p>
-          <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-            <input
-              className="h-10 flex-1 rounded-lg border border-slate-800 bg-slate-950 px-3 text-[13px] text-slate-200 placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
-              placeholder="Digite uma tarefa e pressione Enter"
-              value={value}
-              onChange={(event) => onChange(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') onCreate();
-              }}
-            />
-            <button
-              onClick={onCreate}
-              disabled={!value.trim()}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 text-[11px] font-bold text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <Plus size={13} />
-              Adicionar hoje
-            </button>
-          </div>
-        </div>
-        <button
-          onClick={onOpenFull}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-800 px-3 text-[11px] font-semibold text-slate-400 transition-colors hover:text-slate-100"
-        >
-          <Edit3 size={13} />
-          Completa
-        </button>
-      </div>
-    </section>
-  );
-}
 
 function FocusRail({
   active,
@@ -760,30 +794,53 @@ function DailyQueue({
   );
 }
 
-function TeamLoad({ tasks, members }: { tasks: TeamTask[]; members: TeamMember[] }) {
+
+function RoutinePanel({
+  routines,
+  onCreate,
+  onDelete,
+  onNew,
+}: {
+  routines: TeamRoutine[];
+  onCreate: (routine: TeamRoutine) => void;
+  onDelete: (routine: TeamRoutine) => void;
+  onNew: () => void;
+}) {
+  const visibleRoutines = routines.filter((routine) => routine.active).slice(0, 8);
+
   return (
     <div className="rounded-2xl border border-slate-900/50 bg-slate-950 p-5">
-      <h2 className="text-sm font-semibold text-slate-200">Carga da equipe</h2>
-      <p className="mt-1 text-[11px] text-slate-500">A capacidade usa atividades que ainda não foram concluídas.</p>
-      <div className="mt-5 space-y-4">
-        {members.map((member) => {
-          const active = getActiveTasks(tasks, member.name);
-          const percent = Math.min(Math.round((active / Math.max(member.capacity, 1)) * 100), 100);
-          return (
-            <div key={member.id}>
-              <div className="mb-2 flex items-center justify-between">
-                <div>
-                  <p className="text-[12px] font-semibold text-slate-300">{member.name}</p>
-                  <p className="text-[10px] text-slate-600">{member.role || 'Sem função'}</p>
-                </div>
-                <p className="font-mono text-[11px] text-slate-400">{active}/{member.capacity}</p>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-200">Rotinas</h2>
+          <p className="mt-1 text-[11px] text-slate-500">Atividades repetitivas por pessoa.</p>
+        </div>
+        <button onClick={onNew} className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white transition-colors hover:bg-blue-500" aria-label="Adicionar rotina" title="Adicionar rotina">
+          <Plus size={14} />
+        </button>
+      </div>
+
+      <div className="mt-5 space-y-3">
+        {visibleRoutines.length ? visibleRoutines.map((routine) => (
+          <div key={routine.id} className="rounded-lg border border-slate-900 bg-slate-950/70 p-3">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-[12px] font-semibold leading-5 text-slate-200">{routine.title}</p>
+                <p className="mt-1 text-[10px] text-slate-600">{routine.owner || 'Sem responsável'} · {formatRoutineFrequency(routine.frequency)} às {routine.time || '--:--'}</p>
               </div>
-              <div className="h-1.5 overflow-hidden rounded-full bg-slate-900">
-                <div className={cn('h-full rounded-full', percent > 80 ? 'bg-rose-500' : percent > 65 ? 'bg-amber-400' : 'bg-blue-500')} style={{ width: `${percent}%` }} />
-              </div>
+              <IconButton label="Excluir rotina" onClick={() => onDelete(routine)}><Trash2 size={13} /></IconButton>
             </div>
-          );
-        })}
+            <div className="mt-3 flex items-center justify-between gap-2">
+              <span className="text-[10px] text-slate-600">Próxima: {formatDueDate(getRoutineNextDate(routine))}</span>
+              <button onClick={() => onCreate(routine)} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-800 px-2 py-1.5 text-[10px] font-bold text-slate-400 transition-colors hover:text-slate-100">
+                <Plus size={12} />
+                Criar
+              </button>
+            </div>
+          </div>
+        )) : (
+          <p className="rounded-lg border border-slate-900 bg-slate-950/70 p-3 text-[11px] text-slate-500">Nenhuma rotina cadastrada ainda.</p>
+        )}
       </div>
     </div>
   );
@@ -845,18 +902,21 @@ function TaskModal({
         <Field label="Título" className="md:col-span-2"><input className={inputClass} value={draft.title} onChange={(event) => onChange({ ...draft, title: event.target.value })} autoFocus /></Field>
         <Field label="Projeto"><input className={inputClass} value={draft.project} onChange={(event) => onChange({ ...draft, project: event.target.value })} /></Field>
         <Field label="Responsável">
-          <select
-            className={inputClass}
-            value={draft.ownerEmail}
-            disabled={!isAdmin}
-            onChange={(event) => {
-              const member = members.find((item) => item.email === event.target.value);
-              onChange({ ...draft, owner: member?.name ?? '', ownerEmail: member?.email ?? '' });
-            }}
-          >
-            <option value="">Sem responsável</option>
-            {members.map((member) => <option key={member.id} value={member.email}>{member.name}</option>)}
-          </select>
+          {isAdmin ? (
+            <select
+              className={inputClass}
+              value={draft.ownerEmail}
+              onChange={(event) => {
+                const member = members.find((item) => item.email === event.target.value);
+                onChange({ ...draft, owner: member?.name ?? '', ownerEmail: member?.email ?? '' });
+              }}
+            >
+              <option value="">Sem responsável</option>
+              {members.map((member) => <option key={member.id} value={member.email}>{member.name}</option>)}
+            </select>
+          ) : (
+            <input className={inputClass} value={draft.owner || 'Você'} readOnly />
+          )}
         </Field>
         <Field label="Status"><select className={inputClass} value={draft.status} onChange={(event) => onChange({ ...draft, status: event.target.value as TaskStatus })}>{(isAdmin ? taskStatuses : ['Em andamento', 'Revisão', 'Concluído']).map((status) => <option key={status}>{status}</option>)}</select></Field>
         <Field label="Prioridade"><select className={inputClass} value={draft.priority} onChange={(event) => onChange({ ...draft, priority: event.target.value as TaskPriority })}>{taskPriorities.map((priority) => <option key={priority}>{priority}</option>)}</select></Field>
@@ -866,6 +926,56 @@ function TaskModal({
         <Field label="Observações" className="md:col-span-2"><textarea className={cn(inputClass, 'h-24 py-2')} value={draft.notes} onChange={(event) => onChange({ ...draft, notes: event.target.value })} /></Field>
       </div>
       <ModalActions onClose={onClose} onSave={onSave} saveLabel="Salvar atividade" disabled={!draft.title.trim()} />
+    </Modal>
+  );
+}
+
+
+function RoutineModal({
+  draft,
+  members,
+  isAdmin,
+  onChange,
+  onClose,
+  onSave,
+}: {
+  draft: RoutineDraft;
+  members: TeamMember[];
+  isAdmin: boolean;
+  onChange: (draft: RoutineDraft) => void;
+  onClose: () => void;
+  onSave: () => void;
+}) {
+  return (
+    <Modal title="Nova rotina" onClose={onClose}>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <Field label="Título" className="md:col-span-2"><input className={inputClass} value={draft.title} onChange={(event) => onChange({ ...draft, title: event.target.value })} autoFocus /></Field>
+        <Field label="Projeto"><input className={inputClass} value={draft.project} onChange={(event) => onChange({ ...draft, project: event.target.value })} /></Field>
+        <Field label="Responsável">
+          {isAdmin ? (
+            <select
+              className={inputClass}
+              value={draft.ownerEmail}
+              onChange={(event) => {
+                const member = members.find((item) => item.email === event.target.value);
+                onChange({ ...draft, owner: member?.name ?? '', ownerEmail: member?.email ?? '' });
+              }}
+            >
+              <option value="">Sem responsável</option>
+              {members.map((member) => <option key={member.id} value={member.email}>{member.name}</option>)}
+            </select>
+          ) : (
+            <input className={inputClass} value={draft.owner || 'Você'} readOnly />
+          )}
+        </Field>
+        <Field label="Frequência"><select className={inputClass} value={draft.frequency} onChange={(event) => onChange({ ...draft, frequency: event.target.value as RoutineFrequency })}><option value="daily">Todos os dias</option><option value="weekly">Toda semana</option></select></Field>
+        <Field label="Data inicial"><input className={inputClass} type="date" value={draft.startDate} onChange={(event) => onChange({ ...draft, startDate: event.target.value })} /></Field>
+        <Field label="Horário"><input className={inputClass} type="time" value={draft.time} onChange={(event) => onChange({ ...draft, time: event.target.value })} /></Field>
+        <Field label="Prioridade"><select className={inputClass} value={draft.priority} onChange={(event) => onChange({ ...draft, priority: event.target.value as TaskPriority })}>{taskPriorities.map((priority) => <option key={priority}>{priority}</option>)}</select></Field>
+        <Field label="Tags" className="md:col-span-2"><input className={inputClass} placeholder="Rotina, Operação, Atendimento" value={draft.tags.join(', ')} onChange={(event) => onChange({ ...draft, tags: parseTags(event.target.value) })} /></Field>
+        <Field label="Observações" className="md:col-span-2"><textarea className={cn(inputClass, 'h-24 py-2')} value={draft.notes} onChange={(event) => onChange({ ...draft, notes: event.target.value })} /></Field>
+      </div>
+      <ModalActions onClose={onClose} onSave={onSave} saveLabel="Salvar rotina" disabled={!draft.title.trim()} />
     </Modal>
   );
 }
@@ -887,7 +997,6 @@ function MemberModal({
         <Field label="Nome"><input className={inputClass} value={draft.name} onChange={(event) => onChange({ ...draft, name: event.target.value })} autoFocus /></Field>
         <Field label="Função"><input className={inputClass} value={draft.role} onChange={(event) => onChange({ ...draft, role: event.target.value })} /></Field>
         <Field label="E-mail"><input className={inputClass} type="email" value={draft.email} onChange={(event) => onChange({ ...draft, email: event.target.value })} /></Field>
-        <Field label="Capacidade"><input className={inputClass} type="number" min={1} value={draft.capacity} onChange={(event) => onChange({ ...draft, capacity: Number(event.target.value) })} /></Field>
       </div>
       <ModalActions onClose={onClose} onSave={onSave} saveLabel="Salvar membro" disabled={!draft.name.trim() || !draft.email.trim()} />
     </Modal>
@@ -1002,8 +1111,48 @@ function normalizeTaskDraft(draft: TaskDraft, members: TeamMember[], profile: Us
   };
 }
 
-function getActiveTasks(tasks: TeamTask[], owner: string) {
-  return tasks.filter((task) => task.owner === owner && task.status !== 'Concluído').length;
+
+function normalizeRoutineDraft(draft: RoutineDraft, members: TeamMember[], profile: UserProfile): RoutineDraft {
+  if (profile.role !== 'admin') {
+    return {
+      ...draft,
+      owner: profile.name,
+      ownerEmail: profile.email,
+    };
+  }
+
+  const member = members.find((item) => item.email === draft.ownerEmail || item.name === draft.owner);
+  return {
+    ...draft,
+    owner: member?.name ?? draft.owner,
+    ownerEmail: member?.email ?? draft.ownerEmail,
+  };
+}
+
+function getRoutineNextDate(routine: Pick<TeamRoutine, 'startDate' | 'frequency'>) {
+  if (!routine.startDate) return new Date().toISOString().slice(0, 10);
+
+  const today = startOfDay(new Date());
+  const start = startOfDay(new Date(`${routine.startDate}T00:00:00`));
+
+  if (routine.frequency === 'daily' || start >= today) {
+    return (start >= today ? start : today).toISOString().slice(0, 10);
+  }
+
+  const next = new Date(today);
+  const targetDay = start.getDay();
+  const daysUntil = (targetDay - today.getDay() + 7) % 7;
+  next.setDate(today.getDate() + daysUntil);
+  return next.toISOString().slice(0, 10);
+}
+
+function getRoutineSortValue(routine: TeamRoutine) {
+  const nextDate = getRoutineNextDate(routine);
+  return new Date(`${nextDate}T${routine.time || '23:59'}:00`).getTime();
+}
+
+function formatRoutineFrequency(frequency: RoutineFrequency) {
+  return frequency === 'daily' ? 'diária' : 'semanal';
 }
 
 function parseTags(value: string) {

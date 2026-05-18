@@ -17,6 +17,7 @@ import type { UserProfile } from './auth';
 
 export type TaskStatus = 'Backlog' | 'Em andamento' | 'Revisão' | 'Concluído';
 export type TaskPriority = 'Alta' | 'Média' | 'Baixa';
+export type RoutineFrequency = 'daily' | 'weekly';
 
 export interface TeamMember {
   id: string;
@@ -24,6 +25,23 @@ export interface TeamMember {
   role: string;
   capacity: number;
   email: string;
+}
+
+export interface TeamRoutine {
+  id: string;
+  title: string;
+  project: string;
+  owner: string;
+  ownerEmail: string;
+  priority: TaskPriority;
+  startDate: string;
+  time: string;
+  frequency: RoutineFrequency;
+  notes: string;
+  tags: string[];
+  active: boolean;
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
 }
 
 export interface TeamTask {
@@ -43,6 +61,7 @@ export interface TeamTask {
 }
 
 export type TaskDraft = Omit<TeamTask, 'id' | 'createdAt' | 'updatedAt'>;
+export type RoutineDraft = Omit<TeamRoutine, 'id' | 'createdAt' | 'updatedAt'>;
 export type MemberDraft = Omit<TeamMember, 'id'>;
 
 export const taskStatuses: TaskStatus[] = ['Backlog', 'Em andamento', 'Revisão', 'Concluído'];
@@ -121,6 +140,19 @@ export function subscribeTeamMembers(onChange: (members: TeamMember[]) => void, 
   );
 }
 
+
+export function subscribeRoutines(profile: UserProfile, onChange: (routines: TeamRoutine[]) => void, onError: (error: FirestoreError) => void) {
+  const routinesQuery = profile.role === 'admin'
+    ? query(collection(db, 'activityRoutines'), orderBy('createdAt', 'desc'))
+    : query(collection(db, 'activityRoutines'), where('ownerEmail', '==', profile.email));
+
+  return onSnapshot(
+    routinesQuery,
+    (snapshot) => onChange(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }) as TeamRoutine)),
+    onError,
+  );
+}
+
 export async function createTask(task: TaskDraft) {
   await addDoc(collection(db, 'activities'), {
     ...task,
@@ -138,6 +170,25 @@ export async function updateTask(id: string, task: Partial<TaskDraft>) {
 
 export async function removeTask(id: string) {
   await deleteDoc(doc(db, 'activities', id));
+}
+
+export async function createRoutine(routine: RoutineDraft) {
+  await addDoc(collection(db, 'activityRoutines'), {
+    ...routine,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function updateRoutine(id: string, routine: Partial<RoutineDraft>) {
+  await updateDoc(doc(db, 'activityRoutines', id), {
+    ...routine,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function removeRoutine(id: string) {
+  await deleteDoc(doc(db, 'activityRoutines', id));
 }
 
 export async function createTeamMember(member: MemberDraft) {

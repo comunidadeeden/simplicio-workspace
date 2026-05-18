@@ -15,11 +15,23 @@ import { Leads } from './components/Leads';
 import { LoginScreen } from './components/LoginScreen';
 import { loadOrCreateProfile, watchAuth, type AccessStatus, type UserProfile } from './lib/auth';
 
+type ThemeMode = 'dark' | 'light';
+
 export default function App() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [activePage, setActivePage] = useState('dashboard');
   const [accessStatus, setAccessStatus] = useState<AccessStatus>('loading');
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [theme, setTheme] = useState<ThemeMode>(() => {
+    if (typeof window === 'undefined') return 'dark';
+    const savedTheme = window.localStorage.getItem('simplicio-theme');
+    return savedTheme === 'light' ? 'light' : 'dark';
+  });
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    window.localStorage.setItem('simplicio-theme', theme);
+  }, [theme]);
 
   useEffect(() => {
     return watchAuth(async (user) => {
@@ -64,7 +76,7 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen bg-slate-950 text-slate-50 overflow-hidden font-sans">
+    <div className={`app-shell ${theme === 'light' ? 'theme-light' : 'theme-dark'} flex h-screen overflow-hidden font-sans`}>
       <Sidebar
         isCollapsed={isSidebarCollapsed}
         setIsCollapsed={setIsSidebarCollapsed}
@@ -73,7 +85,11 @@ export default function App() {
         userRole={userProfile.role}
       />
       <div className="flex-1 flex flex-col h-screen overflow-hidden relative">
-        <TopNav userProfile={userProfile} />
+        <TopNav
+          userProfile={userProfile}
+          theme={theme}
+          onToggleTheme={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
+        />
         <main className="flex-1 overflow-x-hidden overflow-y-auto w-full custom-scrollbar">
           {renderPage()}
         </main>

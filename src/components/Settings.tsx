@@ -467,7 +467,21 @@ function ConnectionTypePicker({ onSelect }: { onSelect: (type: ConnectionType) =
 
 function SalesForm({ draft, onChange, inspectState, inspectMessage, columns }: { draft: SalesSheetConfig; onChange: (draft: SalesSheetConfig) => void; inspectState: InspectState; inspectMessage: string; columns: string[] }) {
   const updateUrl = (value: string) => onChange({ ...draft, spreadsheetUrl: value, gid: extractGid(value, draft.gid) });
-  return <div className="space-y-4"><div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_160px]"><Field label="Nome da fonte"><input className={inputClass} value={draft.platform} placeholder="Hubla, Hotmart, Kiwify..." onChange={(event) => onChange({ ...draft, platform: event.target.value })} /></Field><Field label="Status"><StatusSelect value={draft.status} onChange={(status) => onChange({ ...draft, status })} /></Field></div><Field label="URL da aba de vendas"><UrlField value={draft.spreadsheetUrl} onChange={updateUrl} /></Field><p className="rounded-lg border border-slate-900 bg-slate-950/70 px-3 py-2 text-[11px] leading-5 text-slate-500">Se Hubla e Hotmart estão em abas diferentes, crie uma conexão para cada uma e cole a URL com a aba certa aberta. A aplicação identifica a aba e as colunas automaticamente.</p><SheetInspection state={inspectState} message={inspectMessage} columns={columns} /></div>;
+  const feePercent = draft.platformFeeRate > 1 ? draft.platformFeeRate : draft.platformFeeRate * 100;
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_160px]">
+        <Field label="Nome da fonte"><input className={inputClass} value={draft.platform} placeholder="Hubla, Hotmart, Kiwify..." onChange={(event) => onChange({ ...draft, platform: event.target.value })} /></Field>
+        <Field label="Status"><StatusSelect value={draft.status} onChange={(status) => onChange({ ...draft, status })} /></Field>
+      </div>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_180px]">
+        <Field label="URL da aba de vendas"><UrlField value={draft.spreadsheetUrl} onChange={updateUrl} /></Field>
+        <Field label="Taxa da plataforma (%)"><input className={inputClass} type="number" min={0} step="0.01" value={Number.isFinite(feePercent) ? feePercent : 0} onChange={(event) => onChange({ ...draft, platformFeeRate: Number(event.target.value) / 100 })} /></Field>
+      </div>
+      <p className="rounded-lg border border-slate-900 bg-slate-950/70 px-3 py-2 text-[11px] leading-5 text-slate-500">Se Hubla e Hotmart estão em abas diferentes, crie uma conexão para cada uma e configure a taxa específica da plataforma. O Financeiro calcula entradas como Valor Venda menos essa taxa.</p>
+      <SheetInspection state={inspectState} message={inspectMessage} columns={columns} />
+    </div>
+  );
 }
 
 function AdForm({ draft, onChange, inspectState, inspectMessage, columns }: { draft: AdAccountConfig; onChange: (draft: AdAccountConfig) => void; inspectState: InspectState; inspectMessage: string; columns: string[] }) {

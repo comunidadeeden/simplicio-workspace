@@ -70,7 +70,7 @@ export function Dashboard() {
   const averageTicket = totalRevenue / Math.max(totalOrders, 1);
   const cpa = totalOrders ? totalTraffic / totalOrders : 0;
   const dateRangeRevenue = sum(revenueInDateRange.map((item) => item.revenue));
-  const dateRangeCommission = sum(revenueInDateRange.map((item) => item.commission ?? 0));
+  const dateRangeNetRevenue = sum(revenueInDateRange.map((item) => item.netRevenue ?? item.revenue));
 
   const funnelData = useMemo(() => buildFunnel(filteredTraffic, filteredRevenue), [filteredRevenue, filteredTraffic]);
   const productData = useMemo(() => groupRevenueByProduct(filteredRevenue), [filteredRevenue]);
@@ -150,7 +150,7 @@ export function Dashboard() {
         filteredCount={filteredRevenue.length}
         filteredRevenue={totalRevenue}
         dateRangeRevenue={dateRangeRevenue}
-        dateRangeCommission={dateRangeCommission}
+        dateRangeNetRevenue={dateRangeNetRevenue}
         productFilters={productFilters}
       />
 
@@ -263,11 +263,11 @@ function DateRangeControl({
   );
 }
 
-function DataAudit({ salesCount, filteredCount, filteredRevenue, dateRangeRevenue, dateRangeCommission, productFilters }: { salesCount: number; filteredCount: number; filteredRevenue: number; dateRangeRevenue: number; dateRangeCommission: number; productFilters: string[] }) {
+function DataAudit({ salesCount, filteredCount, filteredRevenue, dateRangeRevenue, dateRangeNetRevenue, productFilters }: { salesCount: number; filteredCount: number; filteredRevenue: number; dateRangeRevenue: number; dateRangeNetRevenue: number; productFilters: string[] }) {
   const filterLabel = productFilters.length ? productFilters.join(', ') : 'Todos os produtos';
   return (
     <section className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-[12px] leading-5 text-slate-700 shadow-sm dark:border-slate-900/60 dark:bg-slate-950 dark:text-slate-400">
-      <span className="font-bold text-slate-950 dark:text-slate-200">Auditoria da planilha:</span> {number.format(salesCount)} venda(s) carregadas. Período atual sem filtro de produto: <span className="font-mono font-bold text-slate-950 dark:text-slate-100">{money.format(dateRangeRevenue)}</span>{dateRangeCommission > 0 ? <> · comissões: <span className="font-mono font-bold text-slate-950 dark:text-slate-100">{money.format(dateRangeCommission)}</span></> : null}. Filtro ativo: <span className="font-semibold text-blue-700 dark:text-blue-300">{filterLabel}</span>, mostrando {number.format(filteredCount)} venda(s) e <span className="font-mono font-bold text-slate-950 dark:text-slate-100">{money.format(filteredRevenue)}</span>.
+      <span className="font-bold text-slate-950 dark:text-slate-200">Auditoria da planilha:</span> {number.format(salesCount)} venda(s) carregadas. Período atual sem filtro de produto: <span className="font-mono font-bold text-slate-950 dark:text-slate-100">{money.format(dateRangeRevenue)}</span>{dateRangeNetRevenue !== dateRangeRevenue ? <> · líquido estimado: <span className="font-mono font-bold text-slate-950 dark:text-slate-100">{money.format(dateRangeNetRevenue)}</span></> : null}. Filtro ativo: <span className="font-semibold text-blue-700 dark:text-blue-300">{filterLabel}</span>, mostrando {number.format(filteredCount)} venda(s) e <span className="font-mono font-bold text-slate-950 dark:text-slate-100">{money.format(filteredRevenue)}</span>.
     </section>
   );
 }

@@ -116,8 +116,9 @@ export function Finance() {
   const trafficTax = sum(trafficExpensesInPeriod.map((expense) => expense.taxAmount ?? 0));
   const trafficTotal = sum(trafficExpensesInPeriod.map((expense) => expense.amount));
   const grossSalesRevenue = sum(filteredRevenueByDate.map((item) => item.grossRevenue ?? item.revenue));
-  const commissionRevenue = sum(filteredRevenueByDate.map((item) => item.commission ?? 0));
-  const totalRevenue = commissionRevenue || grossSalesRevenue;
+  const platformFees = sum(filteredRevenueByDate.map((item) => item.platformFeeAmount ?? 0));
+  const netSalesRevenue = sum(filteredRevenueByDate.map((item) => item.netRevenue ?? item.revenue));
+  const totalRevenue = netSalesRevenue;
   const paidExpenses = sum(filteredExpensesByDate.filter((expense) => expense.status === 'Paga').map((expense) => expense.amount));
   const openExpenses = sum(filteredExpensesByDate.filter((expense) => expense.status === 'Aberta').map((expense) => expense.amount));
   const fixedExpenses = sum(filteredExpensesByDate.filter((expense) => expense.isRecurring).map((expense) => expense.amount));
@@ -267,14 +268,14 @@ export function Finance() {
       </section>
 
       <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Entradas por vendas" value={money.format(totalRevenue)} detail={commissionRevenue ? `comissões das plataformas · bruto ${money.format(grossSalesRevenue)}` : 'sem coluna de comissão; usando venda bruta'} icon={TrendingUp} tone="blue" />
+        <MetricCard label="Entradas por vendas" value={money.format(totalRevenue)} detail={`vendas ${money.format(grossSalesRevenue)} - taxas ${money.format(platformFees)}`} icon={TrendingUp} tone="blue" />
         <MetricCard label="Saídas totais" value={money.format(paidExpenses + openExpenses)} detail={`${money.format(trafficTotal)} vêm de tráfego`} icon={TrendingDown} tone="amber" />
         <MetricCard label="Tráfego importado" value={money.format(trafficTotal)} detail={`mídia ${money.format(trafficGross)} + ${money.format(trafficTax)} imposto`} icon={FileSpreadsheet} tone="blue" />
         <MetricCard label="Saldo projetado" value={money.format(projectedBalance)} detail={`${margin}% de margem prevista`} icon={Wallet} tone={projectedBalance >= 0 ? 'green' : 'rose'} />
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-[12px] leading-5 text-slate-700 shadow-sm dark:border-slate-900/60 dark:bg-slate-950 dark:text-slate-400">
-        <span className="font-bold text-slate-950 dark:text-slate-200">Auditoria financeira:</span> {filteredRevenueByDate.length} venda(s) no período. Venda bruta: <span className="font-mono font-bold text-slate-950 dark:text-slate-100">{money.format(grossSalesRevenue)}</span>. Comissão lida da planilha: <span className="font-mono font-bold text-slate-950 dark:text-slate-100">{money.format(commissionRevenue)}</span>. O card de entradas usa comissão quando a coluna existir.
+        <span className="font-bold text-slate-950 dark:text-slate-200">Auditoria financeira:</span> {filteredRevenueByDate.length} venda(s) no período. Venda bruta: <span className="font-mono font-bold text-slate-950 dark:text-slate-100">{money.format(grossSalesRevenue)}</span>. Taxas configuradas: <span className="font-mono font-bold text-slate-950 dark:text-slate-100">{money.format(platformFees)}</span>. Entrada líquida estimada: <span className="font-mono font-bold text-slate-950 dark:text-slate-100">{money.format(netSalesRevenue)}</span>.
       </section>
 
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-12">

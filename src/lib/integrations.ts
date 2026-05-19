@@ -23,6 +23,7 @@ export interface SalesSheetConfig {
   orderColumn: string;
   productColumn: string;
   statusColumn: string;
+  platformFeeRate: number;
   status: ConnectionStatus;
 }
 
@@ -94,6 +95,7 @@ export const defaultSalesSource: SalesSheetConfig = {
   orderColumn: '',
   productColumn: 'produto',
   statusColumn: 'status',
+  platformFeeRate: 0,
   status: 'Ativa',
 };
 
@@ -225,15 +227,18 @@ async function loadSales(config: SalesSheetConfig): Promise<SalesRevenuePoint[]>
     const date = parseDate(dateValue) || new Date().toISOString().slice(0, 10);
     const occurredAt = parseDateTime(dateValue, timeValue);
     const grossRevenue = parseMoney(readColumn(row, config.revenueColumn, ['valor venda', 'valor da venda', 'valor', 'receita', 'faturamento', 'valor líquido', 'valor liquido', 'total']));
-    const commission = parseMoney(readColumn(row, '', ['valor comissão', 'valor comissao', 'comissão', 'comissao', 'commission', 'valor recebido', 'valor líquido produtor', 'valor liquido produtor']));
-    const revenue = grossRevenue || commission;
+    const platformFeeRate = normalizeRate(config.platformFeeRate);
+    const platformFeeAmount = roundCurrency(grossRevenue * platformFeeRate);
+    const netRevenue = roundCurrency(grossRevenue - platformFeeAmount);
     const orders = config.orderColumn ? Number(readColumn(row, config.orderColumn, ['pedidos', 'orders', 'vendas']) || 1) : 1;
     return {
       date,
       label: formatShortDate(date),
-      revenue,
+      revenue: grossRevenue,
       grossRevenue: grossRevenue || undefined,
-      commission: commission || undefined,
+      platformFeeRate,
+      platformFeeAmount: platformFeeAmount || undefined,
+      netRevenue: netRevenue || undefined,
       orders: Number.isFinite(orders) && orders > 0 ? orders : 1,
       platform: readColumn(row, config.productColumn, ['produto', 'plataforma', 'product']) || config.platform || `Venda ${index + 1}`,
       occurredAt,
@@ -506,6 +511,7 @@ function normalizeSalesSources(settings: Partial<IntegrationSettings>): SalesShe
   return sources.map((source, index) => ({
     ...defaultSalesSource,
     ...source,
+    platformFeeRate: normalizeRate(source.platformFeeRate),
     id: source.id || (index === 0 ? 'sales-principal' : `sales-${index + 1}`),
   }));
 }
@@ -520,6 +526,11 @@ function formatShortDate(date: string) {
 
 function getErrorMessage(source: string, error: unknown) {
   return `${source}: ${error instanceof Error ? error.message : 'erro desconhecido'}`;
+}
+
+function normalizeRate(value?: number) {
+  const numeric = Number(value) || 0;
+  return numeric > 1 ? numeric / 100 : numeric;
 }
 
 function roundCurrency(value: number) {

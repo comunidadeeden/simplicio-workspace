@@ -95,10 +95,7 @@ export function Dashboard() {
           </div>
           <div className="grid gap-2 lg:grid-cols-[220px_auto_40px] xl:justify-end">
             <ProductDropdown options={productOptions} selected={productFilters} onToggle={toggleProductFilter} onClear={() => setProductFilters([])} />
-            <DateRangeControl end={customEnd} onEnd={(value) => {
-              setCustomEnd(value);
-              setCustomStart(getPeriodStart(value));
-            }} onReset={() => {
+            <DateRangeControl start={customStart} end={customEnd} onStart={setCustomStart} onEnd={setCustomEnd} onReset={() => {
               const range = getDefaultDateRange();
               setCustomStart(range.start);
               setCustomEnd(range.end);
@@ -196,7 +193,7 @@ export function Dashboard() {
           </div>
         </Panel>
         <Panel className="xl:col-span-5" title="Vendas recentes" description="Últimos registros encontrados na planilha.">
-          <div className="space-y-3">{filteredRevenue.slice(-6).reverse().map((item, index) => <div key={`${item.date}-${index}`}><SummaryLine label={`${item.platform} · ${item.label}`} value={money.format(item.revenue)} /></div>)}{!filteredRevenue.length && <EmptyText text="Sem vendas no período." />}</div>
+          <div className="space-y-3">{filteredRevenue.slice(-6).reverse().map((item, index) => <div key={`${item.date}-${index}`}><SummaryLine label={`${item.platform} · ${formatDate(item.date)}${formatTime(item.occurredAt)}`} value={money.format(item.revenue)} /></div>)}{!filteredRevenue.length && <EmptyText text="Sem vendas no período." />}</div>
         </Panel>
       </section>
     </div>
@@ -204,27 +201,32 @@ export function Dashboard() {
 }
 
 function StatusBanner({ status, message }: { status: LoadStatus; message: string }) {
-  const tone = status === 'ready' ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-200' : status === 'loading' ? 'border-slate-800 bg-slate-950 text-slate-400' : 'border-amber-500/20 bg-amber-500/10 text-amber-200';
+  const tone = status === 'ready' ? 'border-emerald-500/30 bg-emerald-50 text-emerald-800 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-200' : status === 'loading' ? 'border-slate-300 bg-white text-slate-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400' : 'border-amber-500/30 bg-amber-50 text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200';
   return <div className={cn('max-w-xl rounded-lg border px-3 py-2 text-[11px] font-semibold leading-5', tone)}>{status === 'loading' && <RefreshCw size={12} className="mr-2 inline animate-spin" />}{message}</div>;
 }
 
 
 
 function DateRangeControl({
+  start,
   end,
+  onStart,
   onEnd,
   onReset,
 }: {
+  start: string;
   end: string;
+  onStart: (value: string) => void;
   onEnd: (value: string) => void;
   onReset: () => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 p-1.5">
-      <CalendarDays size={14} className="ml-1 text-blue-400" />
-      <span className="px-1 text-[10px] font-semibold uppercase tracking-wider text-slate-600">Até</span>
-      <input className="h-7 rounded-md border border-slate-800 bg-slate-950 px-2 text-[11px] text-slate-300 outline-none focus:ring-1 focus:ring-blue-600" type="date" value={end} onChange={(event) => onEnd(event.target.value)} aria-label="Fim do período" />
-      <button type="button" onClick={onReset} className="rounded-md px-2 py-1 text-[10px] font-semibold text-blue-300 transition-colors hover:bg-blue-500/10">
+    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-300 bg-white p-1.5 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+      <CalendarDays size={14} className="ml-1 text-blue-500 dark:text-blue-400" />
+      <input className="h-7 rounded-md border border-slate-300 bg-white px-2 text-[11px] text-slate-900 outline-none focus:ring-1 focus:ring-blue-600 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300" type="date" value={start} onChange={(event) => onStart(event.target.value)} aria-label="Início do período" />
+      <span className="text-[10px] text-slate-500 dark:text-slate-600">até</span>
+      <input className="h-7 rounded-md border border-slate-300 bg-white px-2 text-[11px] text-slate-900 outline-none focus:ring-1 focus:ring-blue-600 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300" type="date" value={end} onChange={(event) => onEnd(event.target.value)} aria-label="Fim do período" />
+      <button type="button" onClick={onReset} className="rounded-md px-2 py-1 text-[10px] font-semibold text-blue-700 transition-colors hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-500/10">
         Último sábado até hoje
       </button>
     </div>
@@ -349,7 +351,7 @@ function ConversionBadge({ value }: { value: number | null }) {
   return (
     <div className="absolute right-1 top-1/2 z-20 hidden -translate-y-1/2 items-center gap-1 md:flex">
       <span className="h-px w-5 bg-blue-500/40" />
-      <span className="rounded-lg border border-blue-400/25 bg-slate-950/95 px-2 py-1 font-mono text-[10px] font-bold text-blue-100 shadow-[0_0_16px_rgba(59,130,246,0.12)]">{value === null ? '0,00%' : formatPercent(value)}</span>
+      <span className="rounded-lg border border-blue-200 bg-white/95 px-2 py-1 font-mono text-[10px] font-bold text-black shadow-[0_0_16px_rgba(59,130,246,0.12)]">{value === null ? '0,00%' : formatPercent(value)}</span>
     </div>
   );
 }
@@ -409,10 +411,6 @@ function mergeDailyFlow(revenue: SalesRevenuePoint[], traffic: TrafficSpendPoint
 
 function getTaxedTrafficSpend(item: TrafficSpendPoint) {
   return item.spend * (1 + TRAFFIC_TAX_RATE);
-}
-
-function getPeriodStart(end: string) {
-  return toIso(lastSaturday(new Date(`${end}T00:00:00`)));
 }
 
 function matchesDate(date: string, start: string, end: string) {
@@ -495,6 +493,13 @@ function unique(values: string[]) {
 
 function sum(values: number[]) {
   return values.reduce((total, value) => total + value, 0);
+}
+
+function formatTime(occurredAt?: string) {
+  if (!occurredAt) return '';
+  const date = new Date(occurredAt);
+  if (Number.isNaN(date.getTime())) return '';
+  return ` às ${new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' }).format(date)}`;
 }
 
 function formatDate(date: string) {

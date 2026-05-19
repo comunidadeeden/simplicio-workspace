@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { AlertTriangle, ArrowDownUp, BrainCircuit, ChevronDown, Filter, RefreshCw, Search, Sparkles, Target, Ticket, Users } from 'lucide-react';
+import { AlertTriangle, ArrowDownUp, ChevronDown, Filter, RefreshCw, Search, Sparkles, Target, Ticket, Users } from 'lucide-react';
 import { defaultIntegrationSettings, subscribeIntegrationSettings } from '../lib/integrations';
 import { loadLeadScoreData, type LeadTemperature, type ScoredLead } from '../lib/leads';
 import { cn } from '../lib/utils';
@@ -62,8 +62,6 @@ export function Leads() {
   const hotLeads = leads.filter((lead) => lead.temperature === 'Quente');
   const workshopLeads = leads.filter((lead) => lead.stage === 'Comprou ingresso');
   const edenLeads = leads.filter((lead) => lead.stage === 'Comprou Éden');
-  const averageScore = leads.length ? Math.round(leads.reduce((total, lead) => total + lead.score, 0) / leads.length) : 0;
-  const potentialRevenue = hotLeads.filter((lead) => lead.stage !== 'Comprou Éden').length * 697;
 
   const setSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -91,12 +89,11 @@ export function Leads() {
         </section>
       )}
 
-      <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Leads classificados" value={number.format(leads.length)} detail={`${number.format(filteredLeads.length)} no filtro`} icon={Users} tone="blue" />
         <MetricCard label="Quentes" value={number.format(hotLeads.length)} detail="Score 75+" icon={Sparkles} tone="green" />
         <MetricCard label="Ingressos" value={number.format(workshopLeads.length)} detail="Entraram no funil" icon={Ticket} tone="amber" />
         <MetricCard label="Compraram Éden" value={number.format(edenLeads.length)} detail="Conversão final" icon={Target} tone="green" />
-        <MetricCard label="Receita potencial" value={money.format(potentialRevenue)} detail={`Score médio ${averageScore}`} icon={BrainCircuit} tone="blue" />
       </section>
 
       <section className="rounded-2xl border border-slate-900/60 bg-slate-950 p-4">

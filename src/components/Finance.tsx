@@ -59,8 +59,8 @@ export function Finance() {
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('connecting');
   const [syncMessage, setSyncMessage] = useState('Conectando ao Firebase...');
   const [view, setView] = useState<FinanceView>('overview');
+  const [dateStart, setDateStart] = useState(getMonthStart());
   const [dateEnd, setDateEnd] = useState(getToday());
-  const dateStart = useMemo(() => getPeriodStart(dateEnd), [dateEnd]);
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('Todas');
   const [statusFilter, setStatusFilter] = useState<ExpenseStatus | 'Todos'>('Todos');
@@ -246,7 +246,7 @@ export function Finance() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <DateRangeControl end={dateEnd} onEnd={setDateEnd} />
+          <DateRangeControl start={dateStart} end={dateEnd} onStart={setDateStart} onEnd={setDateEnd} onReset={() => { setDateStart(getMonthStart()); setDateEnd(getToday()); }} />
           <button
             type="button"
             onClick={() => void refreshSheetData()}
@@ -364,13 +364,14 @@ export function Finance() {
 }
 
 
-function DateRangeControl({ end, onEnd }: { end: string; onEnd: (value: string) => void }) {
-  const start = getPeriodStart(end);
+function DateRangeControl({ start, end, onStart, onEnd, onReset }: { start: string; end: string; onStart: (value: string) => void; onEnd: (value: string) => void; onReset: () => void }) {
   return (
-    <div className="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 p-1.5">
-      <CalendarDays size={14} className="ml-1 text-blue-400" />
-      <span className="hidden text-[10px] font-semibold uppercase tracking-wider text-slate-600 sm:inline">{formatDate(start)} -</span>
-      <input className="h-7 rounded-md border border-slate-800 bg-slate-950 px-2 text-[11px] text-slate-300 outline-none focus:ring-1 focus:ring-blue-600" type="date" value={end} onChange={(event) => onEnd(event.target.value)} aria-label="Fim do período" />
+    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-300 bg-white p-1.5 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+      <CalendarDays size={14} className="ml-1 text-blue-500 dark:text-blue-400" />
+      <input className="h-7 rounded-md border border-slate-300 bg-white px-2 text-[11px] text-slate-900 outline-none focus:ring-1 focus:ring-blue-600 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300" type="date" value={start} onChange={(event) => onStart(event.target.value)} aria-label="Início do período" />
+      <span className="text-[10px] text-slate-500 dark:text-slate-600">até</span>
+      <input className="h-7 rounded-md border border-slate-300 bg-white px-2 text-[11px] text-slate-900 outline-none focus:ring-1 focus:ring-blue-600 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300" type="date" value={end} onChange={(event) => onEnd(event.target.value)} aria-label="Fim do período" />
+      <button type="button" onClick={onReset} className="rounded-md px-2 py-1 text-[10px] font-semibold text-blue-700 transition-colors hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-500/10">Este mês</button>
     </div>
   );
 }
@@ -713,12 +714,9 @@ function getToday() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function getPeriodStart(end: string) {
-  const date = new Date(`${end}T00:00:00`);
-  const day = date.getDay();
-  const diff = (day + 1) % 7;
-  date.setDate(date.getDate() - diff);
-  return date.toISOString().slice(0, 10);
+function getMonthStart() {
+  const today = new Date();
+  return new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
 }
 
 function sum(values: number[]) { return values.reduce((total, value) => total + value, 0); }

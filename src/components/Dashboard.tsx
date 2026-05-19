@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { motion } from 'motion/react';
 import { AreaChart, Area, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, CartesianGrid } from 'recharts';
 import { AlertTriangle, ArrowDownRight, ArrowUpRight, CalendarDays, Filter, PieChart as PieChartIcon, RefreshCw, ShoppingCart, Target, TrendingUp, Wallet } from 'lucide-react';
@@ -24,6 +24,7 @@ export function Dashboard() {
   const [customStart, setCustomStart] = useState(defaultDateRange.start);
   const [customEnd, setCustomEnd] = useState(defaultDateRange.end);
   const [showFilters, setShowFilters] = useState(false);
+  const [showAudit, setShowAudit] = useState(false);
 
   useEffect(() => {
     return subscribeIntegrationSettings(
@@ -46,6 +47,13 @@ export function Dashboard() {
       },
     );
   }, []);
+
+  useEffect(() => {
+    if (status !== 'ready') return;
+    setShowAudit(true);
+    const timeout = window.setTimeout(() => setShowAudit(false), 6500);
+    return () => window.clearTimeout(timeout);
+  }, [customEnd, customStart, productFilters, status]);
 
   const productOptions = useMemo(() => ['Workshop', 'Éden', ...unique(revenue.map((item) => item.platform)).filter((item) => !isWorkshopProduct(item) && !isEdenProduct(item))], [revenue]);
   const accountOptions = useMemo(() => ['Todas', ...unique(traffic.map((item) => item.account))], [traffic]);
@@ -145,14 +153,16 @@ export function Dashboard() {
         <MetricCard label="CPA" value={money.format(cpa)} icon={ArrowUpRight} tone={cpa ? 'blue' : 'rose'} />
       </section>
 
-      <DataAudit
-        salesCount={revenue.length}
-        filteredCount={filteredRevenue.length}
-        filteredRevenue={totalRevenue}
-        dateRangeRevenue={dateRangeRevenue}
-        dateRangeNetRevenue={dateRangeNetRevenue}
-        productFilters={productFilters}
-      />
+      {showAudit && (
+        <DataAudit
+          salesCount={revenue.length}
+          filteredCount={filteredRevenue.length}
+          filteredRevenue={totalRevenue}
+          dateRangeRevenue={dateRangeRevenue}
+          dateRangeNetRevenue={dateRangeNetRevenue}
+          productFilters={productFilters}
+        />
+      )}
 
       {status === 'error' && (
         <section className="rounded-2xl border border-amber-500/15 bg-amber-500/[0.04] p-4 text-[12px] leading-5 text-amber-100">
@@ -237,8 +247,19 @@ function DateRangeControl({
   resetLabel: string;
 }) {
   const [open, setOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!wrapperRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', closeOnOutsideClick);
+    return () => document.removeEventListener('mousedown', closeOnOutsideClick);
+  }, [open]);
+
   return (
-    <div className="relative">
+    <div ref={wrapperRef} className="relative">
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
@@ -266,9 +287,11 @@ function DateRangeControl({
 function DataAudit({ salesCount, filteredCount, filteredRevenue, dateRangeRevenue, dateRangeNetRevenue, productFilters }: { salesCount: number; filteredCount: number; filteredRevenue: number; dateRangeRevenue: number; dateRangeNetRevenue: number; productFilters: string[] }) {
   const filterLabel = productFilters.length ? productFilters.join(', ') : 'Todos os produtos';
   return (
-    <section className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-[12px] leading-5 text-slate-700 shadow-sm dark:border-slate-900/60 dark:bg-slate-950 dark:text-slate-400">
-      <span className="font-bold text-slate-950 dark:text-slate-200">Auditoria da planilha:</span> {number.format(salesCount)} venda(s) carregadas. Período atual sem filtro de produto: <span className="font-mono font-bold text-slate-950 dark:text-slate-100">{money.format(dateRangeRevenue)}</span>{dateRangeNetRevenue !== dateRangeRevenue ? <> · líquido estimado: <span className="font-mono font-bold text-slate-950 dark:text-slate-100">{money.format(dateRangeNetRevenue)}</span></> : null}. Filtro ativo: <span className="font-semibold text-blue-700 dark:text-blue-300">{filterLabel}</span>, mostrando {number.format(filteredCount)} venda(s) e <span className="font-mono font-bold text-slate-950 dark:text-slate-100">{money.format(filteredRevenue)}</span>.
-    </section>
+    <aside className="fixed right-6 top-6 z-50 max-w-sm rounded-xl border border-slate-200 bg-white px-4 py-3 text-[11px] leading-5 text-slate-700 shadow-xl shadow-slate-900/10 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
+      <span className="font-bold text-slate-950 dark:text-slate-200">Auditoria da planilha</span>
+      <p className="mt-1">{number.format(salesCount)} venda(s) carregadas. Período sem filtro: <span className="font-mono font-bold text-slate-950 dark:text-slate-100">{money.format(dateRangeRevenue)}</span>{dateRangeNetRevenue !== dateRangeRevenue ? <> · líquido: <span className="font-mono font-bold text-slate-950 dark:text-slate-100">{money.format(dateRangeNetRevenue)}</span></> : null}.</p>
+      <p className="mt-1">Filtro: <span className="font-semibold text-blue-700 dark:text-blue-300">{filterLabel}</span> · {number.format(filteredCount)} venda(s) · <span className="font-mono font-bold text-slate-950 dark:text-slate-100">{money.format(filteredRevenue)}</span>.</p>
+    </aside>
   );
 }
 

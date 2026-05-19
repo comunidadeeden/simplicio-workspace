@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { motion } from 'motion/react';
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import {
@@ -6,10 +6,8 @@ import {
   Banknote,
   CalendarDays,
   CheckCircle2,
-  CreditCard,
   Edit3,
   FileSpreadsheet,
-  Filter,
   RefreshCw,
   Plus,
   ReceiptText,
@@ -68,6 +66,7 @@ export function Finance() {
   const [expenseModalOpen, setExpenseModalOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<FinanceExpense | null>(null);
   const [expenseDraft, setExpenseDraft] = useState<ExpenseDraft>(emptyExpenseDraft);
+  const [showAudit, setShowAudit] = useState(false);
 
   useEffect(() => {
     return subscribeExpenses(
@@ -108,13 +107,23 @@ export function Finance() {
     );
   }, []);
 
-  const allExpenses = useMemo(() => [...trafficExpenses, ...expenses], [expenses, trafficExpenses]);
+  useEffect(() => {
+    if (loadingSheets) return;
+    setShowAudit(true);
+    const timeout = window.setTimeout(() => setShowAudit(false), 6500);
+    return () => window.clearTimeout(timeout);
+  }, [dateEnd, dateStart, loadingSheets, revenue.length, trafficExpenses.length]);
+
   const filteredRevenueByDate = useMemo(() => revenue.filter((item) => matchesDate(item.date, dateStart, dateEnd)), [dateEnd, dateStart, revenue]);
-  const filteredExpensesByDate = useMemo(() => allExpenses.filter((expense) => matchesDate(expense.dueDate, dateStart, dateEnd)), [allExpenses, dateEnd, dateStart]);
+  const manualExpensesInPeriod = useMemo(() => expenses.filter((expense) => matchesDate(expense.dueDate, dateStart, dateEnd)), [dateEnd, dateStart, expenses]);
   const trafficExpensesInPeriod = useMemo(() => trafficExpenses.filter((expense) => matchesDate(expense.dueDate, dateStart, dateEnd)), [dateEnd, dateStart, trafficExpenses]);
+  const paidManualTrafficInPeriod = sum(manualExpensesInPeriod.filter(isManualTrafficPayment).map((expense) => expense.amount));
+  const adjustedTrafficExpensesInPeriod = useMemo(() => applyTrafficPayments(trafficExpensesInPeriod, paidManualTrafficInPeriod), [paidManualTrafficInPeriod, trafficExpensesInPeriod]);
+  const filteredExpensesByDate = useMemo(() => [...adjustedTrafficExpensesInPeriod, ...manualExpensesInPeriod], [adjustedTrafficExpensesInPeriod, manualExpensesInPeriod]);
   const trafficGross = sum(trafficExpensesInPeriod.map((expense) => expense.rawAmount ?? 0));
   const trafficTax = sum(trafficExpensesInPeriod.map((expense) => expense.taxAmount ?? 0));
   const trafficTotal = sum(trafficExpensesInPeriod.map((expense) => expense.amount));
+  const trafficOpenTotal = sum(adjustedTrafficExpensesInPeriod.map((expense) => expense.amount));
   const grossSalesRevenue = sum(filteredRevenueByDate.map((item) => item.grossRevenue ?? item.revenue));
   const platformFees = sum(filteredRevenueByDate.map((item) => item.platformFeeAmount ?? 0));
   const netSalesRevenue = sum(filteredRevenueByDate.map((item) => item.netRevenue ?? item.revenue));
@@ -267,30 +276,26 @@ export function Finance() {
         </div>
       </section>
 
-      <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
         <MetricCard label="Entradas por vendas" value={money.format(totalRevenue)} detail={`vendas ${money.format(grossSalesRevenue)} - taxas ${money.format(platformFees)}`} icon={TrendingUp} tone="blue" />
-        <MetricCard label="Saídas totais" value={money.format(paidExpenses + openExpenses)} detail={`${money.format(trafficTotal)} vêm de tráfego`} icon={TrendingDown} tone="amber" />
+        <MetricCard label="Saiu pago" value={money.format(paidExpenses)} detail={`${money.format(paidManualTrafficInPeriod)} pago em tráfego`} icon={CheckCircle2} tone="green" />
+        <MetricCard label="Ainda aberto" value={money.format(openExpenses)} detail={`${money.format(trafficOpenTotal)} em tráfego aberto`} icon={ReceiptText} tone="amber" />
         <MetricCard label="Tráfego importado" value={money.format(trafficTotal)} detail={`mídia ${money.format(trafficGross)} + ${money.format(trafficTax)} imposto`} icon={FileSpreadsheet} tone="blue" />
         <MetricCard label="Saldo projetado" value={money.format(projectedBalance)} detail={`${margin}% de margem prevista`} icon={Wallet} tone={projectedBalance >= 0 ? 'green' : 'rose'} />
+        <MetricCard label="Atrasadas" value={String(overdue.length)} detail={overdue.length ? 'pedem ação' : 'nenhuma no período'} icon={AlertTriangle} tone={overdue.length ? 'rose' : 'green'} />
       </section>
 
-      <section className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-[12px] leading-5 text-slate-700 shadow-sm dark:border-slate-900/60 dark:bg-slate-950 dark:text-slate-400">
-        <span className="font-bold text-slate-950 dark:text-slate-200">Auditoria financeira:</span> {filteredRevenueByDate.length} venda(s) no período. Venda bruta: <span className="font-mono font-bold text-slate-950 dark:text-slate-100">{money.format(grossSalesRevenue)}</span>. Taxas configuradas: <span className="font-mono font-bold text-slate-950 dark:text-slate-100">{money.format(platformFees)}</span>. Entrada líquida estimada: <span className="font-mono font-bold text-slate-950 dark:text-slate-100">{money.format(netSalesRevenue)}</span>.
-      </section>
+      {showAudit && (
+        <FinanceAuditToast
+          salesCount={filteredRevenueByDate.length}
+          grossSalesRevenue={grossSalesRevenue}
+          platformFees={platformFees}
+          netSalesRevenue={netSalesRevenue}
+        />
+      )}
 
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-12">
         <div className="space-y-6 xl:col-span-8">
-          <FinanceSnapshot
-            totalRevenue={totalRevenue}
-            paidExpenses={paidExpenses}
-            openExpenses={openExpenses}
-            projectedBalance={projectedBalance}
-            trafficTotal={trafficTotal}
-            overdueCount={overdue.length}
-            view={view}
-            onView={setView}
-          />
-
           <ExpensePanel
             view={view}
             expenses={filteredExpenses}
@@ -303,6 +308,7 @@ export function Finance() {
             onStatus={(value) => setStatusFilter(value as ExpenseStatus | 'Todos')}
             onKind={(value) => setKindFilter(value as ExpenseKind | 'Todos')}
             onReset={resetFilters}
+            onView={setView}
             onEdit={openEditExpense}
             onDelete={deleteExpense}
             onTogglePaid={togglePaid}
@@ -371,10 +377,32 @@ export function Finance() {
 }
 
 
+function FinanceAuditToast({ salesCount, grossSalesRevenue, platformFees, netSalesRevenue }: { salesCount: number; grossSalesRevenue: number; platformFees: number; netSalesRevenue: number }) {
+  return (
+    <aside className="fixed right-6 top-6 z-50 max-w-sm rounded-xl border border-slate-200 bg-white px-4 py-3 text-[11px] leading-5 text-slate-700 shadow-xl shadow-slate-900/10 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
+      <span className="font-bold text-slate-950 dark:text-slate-200">Auditoria financeira</span>
+      <p className="mt-1">{salesCount} venda(s) no período. Bruto: <span className="font-mono font-bold text-slate-950 dark:text-slate-100">{money.format(grossSalesRevenue)}</span>.</p>
+      <p className="mt-1">Taxas: <span className="font-mono font-bold text-slate-950 dark:text-slate-100">{money.format(platformFees)}</span> · entrada líquida: <span className="font-mono font-bold text-slate-950 dark:text-slate-100">{money.format(netSalesRevenue)}</span>.</p>
+    </aside>
+  );
+}
+
+
 function DateRangeControl({ start, end, onStart, onEnd, onReset, resetLabel }: { start: string; end: string; onStart: (value: string) => void; onEnd: (value: string) => void; onReset: () => void; resetLabel: string }) {
   const [open, setOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!wrapperRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', closeOnOutsideClick);
+    return () => document.removeEventListener('mousedown', closeOnOutsideClick);
+  }, [open]);
+
   return (
-    <div className="relative">
+    <div ref={wrapperRef} className="relative">
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
@@ -399,55 +427,6 @@ function DateRangeControl({ start, end, onStart, onEnd, onReset, resetLabel }: {
   );
 }
 
-function FinanceSnapshot({
-  totalRevenue,
-  paidExpenses,
-  openExpenses,
-  projectedBalance,
-  trafficTotal,
-  overdueCount,
-  view,
-  onView,
-}: {
-  totalRevenue: number;
-  paidExpenses: number;
-  openExpenses: number;
-  projectedBalance: number;
-  trafficTotal: number;
-  overdueCount: number;
-  view: FinanceView;
-  onView: (value: FinanceView) => void;
-}) {
-  return (
-    <div className="rounded-2xl border border-slate-900/50 bg-slate-950 p-5">
-      <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h2 className="text-sm font-semibold text-slate-200">Acompanhamento rápido</h2>
-          <p className="mt-1 text-[11px] text-slate-500">Leitura simples do período selecionado.</p>
-        </div>
-        <ViewSwitcher value={view} onChange={onView} />
-      </div>
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-        <SnapshotItem label="Entrou" value={money.format(totalRevenue)} tone="text-emerald-400" />
-        <SnapshotItem label="Saiu pago" value={money.format(paidExpenses)} tone="text-blue-400" />
-        <SnapshotItem label="Ainda aberto" value={money.format(openExpenses)} tone="text-amber-300" />
-        <SnapshotItem label="Tráfego" value={money.format(trafficTotal)} tone="text-sky-400" />
-        <SnapshotItem label="Saldo previsto" value={money.format(projectedBalance)} tone={projectedBalance >= 0 ? 'text-emerald-400' : 'text-rose-300'} />
-        <SnapshotItem label="Atrasadas" value={String(overdueCount)} tone={overdueCount ? 'text-rose-300' : 'text-slate-300'} />
-      </div>
-    </div>
-  );
-}
-
-function SnapshotItem({ label, value, tone }: { label: string; value: string; tone: string }) {
-  return (
-    <div className="rounded-xl border border-slate-900 bg-slate-950/70 p-4">
-      <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">{label}</p>
-      <p className={cn('mt-2 font-mono text-lg font-bold tracking-tighter', tone)}>{value}</p>
-    </div>
-  );
-}
-
 function ExpensePanel({
   view,
   expenses,
@@ -460,6 +439,7 @@ function ExpensePanel({
   onStatus,
   onKind,
   onReset,
+  onView,
   onEdit,
   onDelete,
   onTogglePaid,
@@ -475,6 +455,7 @@ function ExpensePanel({
   onStatus: (value: string) => void;
   onKind: (value: string) => void;
   onReset: () => void;
+  onView: (value: FinanceView) => void;
   onEdit: (expense: FinanceExpense) => void;
   onDelete: (expense: FinanceExpense) => void;
   onTogglePaid: (expense: FinanceExpense) => void;
@@ -489,9 +470,12 @@ function ExpensePanel({
           <h2 className="text-sm font-semibold text-slate-200">{view === 'recurring' ? 'Contas fixas' : 'Saídas por categoria'}</h2>
           <p className="mt-1 text-[11px] text-slate-500">Resumo concentrado das saídas. Abra uma categoria para ver todos os lançamentos, incluindo tráfego com imposto de 13,83%.</p>
         </div>
-        <div className="relative w-full lg:max-w-xs">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-600" />
-          <input className={cn(inputClass, 'pl-8')} placeholder="Buscar saída" value={search} onChange={(event) => onSearch(event.target.value)} />
+        <div className="flex w-full flex-col gap-2 lg:w-auto lg:flex-row lg:items-center">
+          <ViewSwitcher value={view} onChange={onView} />
+          <div className="relative w-full lg:w-64">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-600" />
+            <input className={cn(inputClass, 'pl-8')} placeholder="Buscar saída" value={search} onChange={(event) => onSearch(event.target.value)} />
+          </div>
         </div>
       </div>
 
@@ -572,6 +556,15 @@ function groupExpensesByCategory(expenses: FinanceExpense[]): ExpenseGroup[] {
   }, {});
 
   return Object.values(groups).sort((first, second) => second.total - first.total);
+}
+
+function SnapshotItem({ label, value, tone }: { label: string; value: string; tone: string }) {
+  return (
+    <div className="rounded-xl border border-slate-900 bg-slate-950/70 p-4">
+      <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">{label}</p>
+      <p className={cn('mt-2 font-mono text-lg font-bold tracking-tighter', tone)}>{value}</p>
+    </div>
+  );
 }
 
 function ExpenseGroupModal({
@@ -722,11 +715,35 @@ function Modal({ title, children, onClose }: { title: string; children: ReactNod
   return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4 backdrop-blur-sm"><div className="w-full max-w-2xl rounded-2xl border border-slate-800 bg-slate-950 p-5 shadow-2xl"><div className="mb-5 flex items-center justify-between"><h2 className="text-sm font-semibold text-slate-100">{title}</h2><IconButton label="Fechar" onClick={onClose}><X size={14} /></IconButton></div>{children}</div></div>;
 }
 
-function SyncBadge({ status, children }: { status: SyncStatus; children: ReactNode }) {
-  const color = status === 'online' ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300' : status === 'local' ? 'border-amber-500/20 bg-amber-500/10 text-amber-300' : 'border-slate-800 bg-slate-900 text-slate-400';
-  return <span className={cn('max-w-[320px] truncate rounded border px-2 py-1 text-[10px] font-bold', color)} title={typeof children === 'string' ? children : undefined}>{children}</span>;
+
+function isManualTrafficPayment(expense: FinanceExpense) {
+  return expense.source !== 'traffic' && expense.category === 'Tráfego' && expense.status === 'Paga';
 }
 
+function applyTrafficPayments(traffic: FinanceExpense[], paidAmount: number) {
+  let remaining = paidAmount;
+  return traffic
+    .map((expense) => {
+      const paidShare = Math.min(expense.amount, remaining);
+      remaining -= paidShare;
+      if (paidShare <= 0) return expense;
+      const nextAmount = roundCurrency(expense.amount - paidShare);
+      const ratio = expense.amount ? nextAmount / expense.amount : 0;
+      const notes = `${expense.notes || ''} Abatido por pagamentos manuais de tráfego: ${money.format(paidShare)}.`.trim();
+      return {
+        ...expense,
+        amount: nextAmount,
+        rawAmount: expense.rawAmount === undefined ? undefined : roundCurrency(expense.rawAmount * ratio),
+        taxAmount: expense.taxAmount === undefined ? undefined : roundCurrency(expense.taxAmount * ratio),
+        notes,
+      };
+    })
+    .filter((expense) => expense.amount > 0.009);
+}
+
+function roundCurrency(value: number) {
+  return Math.round(value * 100) / 100;
+}
 
 function matchesDate(date: string, start: string, end: string) {
   if (!date) return true;

@@ -115,7 +115,7 @@ export function Finance() {
   const trafficGross = sum(trafficExpensesInPeriod.map((expense) => expense.rawAmount ?? 0));
   const trafficTax = sum(trafficExpensesInPeriod.map((expense) => expense.taxAmount ?? 0));
   const trafficTotal = sum(trafficExpensesInPeriod.map((expense) => expense.amount));
-  const totalRevenue = sum(filteredRevenueByDate.map((item) => item.revenue));
+  const totalRevenue = sum(filteredRevenueByDate.map((item) => item.commission ?? item.revenue));
   const paidExpenses = sum(filteredExpensesByDate.filter((expense) => expense.status === 'Paga').map((expense) => expense.amount));
   const openExpenses = sum(filteredExpensesByDate.filter((expense) => expense.status === 'Aberta').map((expense) => expense.amount));
   const fixedExpenses = sum(filteredExpensesByDate.filter((expense) => expense.isRecurring).map((expense) => expense.amount));
@@ -246,7 +246,7 @@ export function Finance() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <DateRangeControl start={dateStart} end={dateEnd} onStart={setDateStart} onEnd={setDateEnd} onReset={() => { setDateStart(getMonthStart()); setDateEnd(getToday()); }} />
+          <DateRangeControl start={dateStart} end={dateEnd} onStart={setDateStart} onEnd={setDateEnd} resetLabel="Este mês" onReset={() => { setDateStart(getMonthStart()); setDateEnd(getToday()); }} />
           <button
             type="button"
             onClick={() => void refreshSheetData()}
@@ -364,14 +364,30 @@ export function Finance() {
 }
 
 
-function DateRangeControl({ start, end, onStart, onEnd, onReset }: { start: string; end: string; onStart: (value: string) => void; onEnd: (value: string) => void; onReset: () => void }) {
+function DateRangeControl({ start, end, onStart, onEnd, onReset, resetLabel }: { start: string; end: string; onStart: (value: string) => void; onEnd: (value: string) => void; onReset: () => void; resetLabel: string }) {
+  const [open, setOpen] = useState(false);
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-300 bg-white p-1.5 shadow-sm dark:border-slate-800 dark:bg-slate-950">
-      <CalendarDays size={14} className="ml-1 text-blue-500 dark:text-blue-400" />
-      <input className="h-7 rounded-md border border-slate-300 bg-white px-2 text-[11px] text-slate-900 outline-none focus:ring-1 focus:ring-blue-600 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300" type="date" value={start} onChange={(event) => onStart(event.target.value)} aria-label="Início do período" />
-      <span className="text-[10px] text-slate-500 dark:text-slate-600">até</span>
-      <input className="h-7 rounded-md border border-slate-300 bg-white px-2 text-[11px] text-slate-900 outline-none focus:ring-1 focus:ring-blue-600 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300" type="date" value={end} onChange={(event) => onEnd(event.target.value)} aria-label="Fim do período" />
-      <button type="button" onClick={onReset} className="rounded-md px-2 py-1 text-[10px] font-semibold text-blue-700 transition-colors hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-500/10">Este mês</button>
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="flex h-10 min-w-[250px] items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-left text-[12px] font-semibold text-black shadow-sm transition-colors hover:border-blue-400"
+      >
+        <CalendarDays size={14} className="text-blue-600" />
+        <span>{formatDate(start)} - {formatDate(end)}</span>
+      </button>
+      {open && (
+        <div className="absolute right-0 top-11 z-40 w-[320px] rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl shadow-slate-900/15">
+          <div className="grid grid-cols-2 gap-2">
+            <label className="space-y-1"><span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Início</span><input className="h-9 w-full rounded-lg border border-slate-300 bg-white px-2 text-[12px] font-semibold text-black outline-none focus:ring-1 focus:ring-blue-600" type="date" value={start} onChange={(event) => onStart(event.target.value)} /></label>
+            <label className="space-y-1"><span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Fim</span><input className="h-9 w-full rounded-lg border border-slate-300 bg-white px-2 text-[12px] font-semibold text-black outline-none focus:ring-1 focus:ring-blue-600" type="date" value={end} onChange={(event) => onEnd(event.target.value)} /></label>
+          </div>
+          <div className="mt-3 flex justify-between gap-2">
+            <button type="button" onClick={onReset} className="rounded-lg px-3 py-2 text-[11px] font-bold text-blue-700 transition-colors hover:bg-blue-50">{resetLabel}</button>
+            <button type="button" onClick={() => setOpen(false)} className="rounded-lg bg-blue-600 px-3 py-2 text-[11px] font-bold text-white transition-colors hover:bg-blue-500">Aplicar</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

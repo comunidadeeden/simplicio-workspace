@@ -95,7 +95,7 @@ export function Dashboard() {
           </div>
           <div className="grid gap-2 lg:grid-cols-[220px_auto_40px] xl:justify-end">
             <ProductDropdown options={productOptions} selected={productFilters} onToggle={toggleProductFilter} onClear={() => setProductFilters([])} />
-            <DateRangeControl start={customStart} end={customEnd} onStart={setCustomStart} onEnd={setCustomEnd} onReset={() => {
+            <DateRangeControl start={customStart} end={customEnd} onStart={setCustomStart} onEnd={setCustomEnd} resetLabel="Último sábado até hoje" onReset={() => {
               const range = getDefaultDateRange();
               setCustomStart(range.start);
               setCustomEnd(range.end);
@@ -213,22 +213,38 @@ function DateRangeControl({
   onStart,
   onEnd,
   onReset,
+  resetLabel,
 }: {
   start: string;
   end: string;
   onStart: (value: string) => void;
   onEnd: (value: string) => void;
   onReset: () => void;
+  resetLabel: string;
 }) {
+  const [open, setOpen] = useState(false);
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-300 bg-white p-1.5 shadow-sm dark:border-slate-800 dark:bg-slate-950">
-      <CalendarDays size={14} className="ml-1 text-blue-500 dark:text-blue-400" />
-      <input className="h-7 rounded-md border border-slate-300 bg-white px-2 text-[11px] text-slate-900 outline-none focus:ring-1 focus:ring-blue-600 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300" type="date" value={start} onChange={(event) => onStart(event.target.value)} aria-label="Início do período" />
-      <span className="text-[10px] text-slate-500 dark:text-slate-600">até</span>
-      <input className="h-7 rounded-md border border-slate-300 bg-white px-2 text-[11px] text-slate-900 outline-none focus:ring-1 focus:ring-blue-600 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300" type="date" value={end} onChange={(event) => onEnd(event.target.value)} aria-label="Fim do período" />
-      <button type="button" onClick={onReset} className="rounded-md px-2 py-1 text-[10px] font-semibold text-blue-700 transition-colors hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-500/10">
-        Último sábado até hoje
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="flex h-10 min-w-[280px] items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-left text-[12px] font-semibold text-black shadow-sm transition-colors hover:border-blue-400"
+      >
+        <CalendarDays size={14} className="text-blue-600" />
+        <span>{formatDate(start)} - {formatDate(end)}</span>
       </button>
+      {open && (
+        <div className="absolute right-0 top-11 z-40 w-[320px] rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl shadow-slate-900/15">
+          <div className="grid grid-cols-2 gap-2">
+            <label className="space-y-1"><span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Início</span><input className="h-9 w-full rounded-lg border border-slate-300 bg-white px-2 text-[12px] font-semibold text-black outline-none focus:ring-1 focus:ring-blue-600" type="date" value={start} onChange={(event) => onStart(event.target.value)} /></label>
+            <label className="space-y-1"><span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Fim</span><input className="h-9 w-full rounded-lg border border-slate-300 bg-white px-2 text-[12px] font-semibold text-black outline-none focus:ring-1 focus:ring-blue-600" type="date" value={end} onChange={(event) => onEnd(event.target.value)} /></label>
+          </div>
+          <div className="mt-3 flex justify-between gap-2">
+            <button type="button" onClick={onReset} className="rounded-lg px-3 py-2 text-[11px] font-bold text-blue-700 transition-colors hover:bg-blue-50">{resetLabel}</button>
+            <button type="button" onClick={() => setOpen(false)} className="rounded-lg bg-blue-600 px-3 py-2 text-[11px] font-bold text-white transition-colors hover:bg-blue-500">Aplicar</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -268,10 +284,10 @@ function ProductDropdown({ options, selected, onToggle, onClear }: { options: st
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="flex h-10 w-full items-center justify-between gap-3 rounded-lg border border-slate-300 bg-white px-3 text-left text-[12px] font-semibold text-slate-900 shadow-sm transition-colors hover:border-blue-400 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:border-slate-700"
+        className="flex h-10 w-full items-center justify-between gap-3 rounded-lg border border-slate-300 bg-white px-3 text-left text-[12px] font-semibold text-black shadow-sm transition-colors hover:border-blue-400"
       >
         <span className="min-w-0 truncate">{label}</span>
-        <span className="text-[10px] text-slate-500 dark:text-slate-600">Produto</span>
+        <span className="text-[10px] text-slate-500">Produto</span>
       </button>
       {open && (
         <div className="absolute left-0 top-11 z-30 w-64 rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl shadow-slate-900/12 dark:border-slate-800 dark:bg-slate-950 dark:shadow-black/30">

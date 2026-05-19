@@ -45,6 +45,8 @@ export interface SalesRevenuePoint {
   orders: number;
   platform: string;
   occurredAt?: string;
+  commission?: number;
+  grossRevenue?: number;
 }
 
 export interface TrafficSpendPoint {

@@ -90,7 +90,7 @@ export const defaultSalesSource: SalesSheetConfig = {
   sheetName: 'Página 1',
   gid: '0',
   dateColumn: 'data',
-  revenueColumn: 'valor',
+  revenueColumn: 'Valor Venda',
   orderColumn: '',
   productColumn: 'produto',
   statusColumn: 'status',
@@ -221,14 +221,19 @@ async function loadSales(config: SalesSheetConfig): Promise<SalesRevenuePoint[]>
   const rows = await fetchRows(config.spreadsheetUrl, config.gid);
   return rows.map((row, index) => {
     const dateValue = readColumn(row, config.dateColumn, ['data', 'date', 'created_at', 'data da venda']);
+    const timeValue = readColumn(row, '', ['hora', 'horário', 'horario', 'hora venda', 'hora da venda', 'time']);
     const date = parseDate(dateValue) || new Date().toISOString().slice(0, 10);
-    const occurredAt = parseDateTime(dateValue);
-    const revenue = parseMoney(readColumn(row, config.revenueColumn, ['valor', 'receita', 'faturamento', 'valor líquido', 'valor liquido', 'total']));
+    const occurredAt = parseDateTime(dateValue, timeValue);
+    const grossRevenue = parseMoney(readColumn(row, config.revenueColumn, ['valor venda', 'valor da venda', 'valor', 'receita', 'faturamento', 'valor líquido', 'valor liquido', 'total']));
+    const commission = parseMoney(readColumn(row, '', ['valor comissão', 'valor comissao', 'comissão', 'comissao', 'commission', 'valor recebido', 'valor líquido produtor', 'valor liquido produtor']));
+    const revenue = grossRevenue || commission;
     const orders = config.orderColumn ? Number(readColumn(row, config.orderColumn, ['pedidos', 'orders', 'vendas']) || 1) : 1;
     return {
       date,
       label: formatShortDate(date),
       revenue,
+      grossRevenue: grossRevenue || undefined,
+      commission: commission || undefined,
       orders: Number.isFinite(orders) && orders > 0 ? orders : 1,
       platform: readColumn(row, config.productColumn, ['produto', 'plataforma', 'product']) || config.platform || `Venda ${index + 1}`,
       occurredAt,
@@ -340,7 +345,7 @@ function parseCsv(csv: string) {
 
 const salesColumnAliases = {
   date: ['data', 'date', 'created_at', 'data venda', 'data da venda', 'data compra', 'data pedido', 'data de compra', 'purchase date', 'sale date'],
-  revenue: ['valor', 'valor venda', 'valor da venda', 'receita', 'faturamento', 'valor líquido', 'valor liquido', 'total', 'amount', 'price', 'preço', 'preco', 'sale amount'],
+  revenue: ['valor venda', 'valor da venda', 'valor', 'receita', 'faturamento', 'valor líquido', 'valor liquido', 'total', 'amount', 'price', 'preço', 'preco', 'sale amount'],
   order: ['pedidos', 'orders', 'vendas', 'pedido', 'order id', 'id pedido', 'transaction', 'transacao', 'transação', 'codigo venda', 'código venda'],
   product: ['produto', 'product', 'produto nome', 'nome produto', 'plataforma', 'offer', 'oferta', 'item', 'plano'],
   status: ['status', 'situação', 'situacao', 'estado', 'pagamento', 'status pagamento', 'payment status', 'metodo pagamento', 'método pagamento'],
@@ -430,19 +435,25 @@ function parseDate(value: string) {
 }
 
 
-function parseDateTime(value: string) {
+function parseDateTime(value: string, timeValue = '') {
   const trimmed = value.trim();
+  const time = normalizeTime(timeValue);
   if (!trimmed) return '';
   const iso = trimmed.match(/^(\d{4}-\d{2}-\d{2})(?:[ T](\d{1,2}:\d{2})(?::\d{2})?)?/);
-  if (iso) return iso[2] ? `${iso[1]}T${iso[2]}:00` : `${iso[1]}T00:00:00`;
+  if (iso) return iso[2] || time ? `${iso[1]}T${iso[2] || time}:00` : '';
   const br = trimmed.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})(?:\s+(\d{1,2}:\d{2})(?::\d{2})?)?/);
   if (br) {
     const year = br[3].length === 2 ? `20${br[3]}` : br[3];
-    const time = br[4] || '00:00';
-    return `${year}-${br[2].padStart(2, '0')}-${br[1].padStart(2, '0')}T${time}:00`;
+    const rowTime = br[4] || time;
+    return rowTime ? `${year}-${br[2].padStart(2, '0')}-${br[1].padStart(2, '0')}T${rowTime}:00` : '';
   }
   const parsed = new Date(trimmed);
-  return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString();
+  return Number.isNaN(parsed.getTime()) || (!/\d{1,2}:\d{2}/.test(trimmed) && !time) ? '' : parsed.toISOString();
+}
+
+function normalizeTime(value: string) {
+  const match = value.trim().match(/(\d{1,2})[:h](\d{2})/i);
+  return match ? `${match[1].padStart(2, '0')}:${match[2]}` : '';
 }
 
 function toTrafficExpense(spend: TrafficSpendPoint): FinanceExpense {

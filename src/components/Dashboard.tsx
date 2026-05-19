@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { motion } from 'motion/react';
 import { AreaChart, Area, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, CartesianGrid } from 'recharts';
-import { AlertTriangle, ArrowDownRight, ArrowUpRight, CalendarDays, Filter, PieChart as PieChartIcon, RefreshCw, Target, TrendingUp, Wallet } from 'lucide-react';
+import { AlertTriangle, ArrowDownRight, ArrowUpRight, CalendarDays, Filter, PieChart as PieChartIcon, RefreshCw, ShoppingCart, Target, TrendingUp, Wallet } from 'lucide-react';
 import { TRAFFIC_TAX_RATE, type SalesRevenuePoint, type TrafficSpendPoint } from '../lib/finance';
 import { defaultIntegrationSettings, loadSheetData, subscribeIntegrationSettings } from '../lib/integrations';
 import { cn } from '../lib/utils';
@@ -132,10 +132,11 @@ export function Dashboard() {
         </section>
       )}
 
-      <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
         <MetricCard label="Faturamento" value={money.format(totalRevenue)} icon={TrendingUp} tone="blue" />
         <MetricCard label="Tráfego" value={money.format(totalTraffic)} icon={ArrowDownRight} tone="amber" />
         <MetricCard label="ROAS" value={roas.toFixed(2).replace('.', ',')} icon={Target} tone={roas >= 2 ? 'green' : roas >= 1 ? 'amber' : 'rose'} />
+        <MetricCard label="Vendas" value={number.format(totalOrders)} icon={ShoppingCart} tone="blue" />
         <MetricCard label="Ticket médio" value={money.format(averageTicket)} icon={Wallet} tone="green" />
         <MetricCard label="CPA" value={money.format(cpa)} icon={ArrowUpRight} tone={cpa ? 'blue' : 'rose'} />
       </section>
